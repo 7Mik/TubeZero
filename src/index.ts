@@ -15,6 +15,14 @@ export {
     scrapeTasteData
 } from './scraper.js';
 
+export {
+    Client
+} from './client.js';
+
+export type {
+    ClientOptions
+} from './client.js';
+
 export type {
     VideoEntry,
     InnerTubeConfig,
@@ -42,3 +50,16 @@ export {
 export type {
     TranscriptSegment
 } from './subtitles.js';
+
+export { Base } from './base.js';
+export { Continuable } from './continuable.js';
+
+export {
+    Thumbnails
+} from './thumbnails.js';
+
+export type {
+    Thumbnail
+} from './thumbnails.js';
+
+

@@ -102,10 +102,10 @@ Before mapping the API, we must evaluate all features against **TubeVanilla's th
 ## 📅 Proposed Implementation Timeline
 
 ### 🏃 Sprint 1: Infrastructure & Core Client (Target: Week 1)
-* [ ] Create **`Base`** class to inject the Client context.
-* [ ] Implement **`Continuable<T>`** abstraction.
-* [ ] Implement core **`Client`** class using Web Crypto API.
-* [ ] Implement **`Thumbnail`** / **`Thumbnails`** handlers.
+* [x] Create **`Base`** class to inject the Client context.
+* [x] Implement **`Continuable<T>`** abstraction.
+* [x] Implement core **`Client`** class using Web Crypto API.
+* [x] Implement **`Thumbnail`** / **`Thumbnails`** handlers.
 
 ### 🏃 Sprint 2: Video, Channel, & Playlist Foundations (Target: Week 2)
 * [ ] Implement search parsing into **`SearchResult`** using **static base64 filter strings** instead of dynamic Protobuf builders.

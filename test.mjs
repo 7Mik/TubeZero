@@ -2,7 +2,9 @@ import {
     fetchSubtitlesFromYouTube, 
     fetchCommentsFromYouTube, 
     getInnerTubeConfig, 
-    scrapeTasteData 
+    scrapeTasteData,
+    Thumbnails,
+    Client
 } from './dist/index.js';
 
 const videoId = 'dQw4w9WgXcQ'; // Rick Astley - Never Gonna Give You Up
@@ -72,7 +74,75 @@ async function runTests() {
         console.error("❌ Errore in scrapeTasteData:", e);
     }
 
+    // 5. Test Thumbnails Helper
+    console.log("\n--- 5. Test Thumbnails Helper ---");
+    try {
+        const list = [
+            { url: 'thumb1.jpg', width: 120, height: 90 },
+            { url: 'thumb3.jpg', width: 1920, height: 1080 },
+            { url: 'thumb2.jpg', width: 640, height: 480 }
+        ];
+        const thumbnails = new Thumbnails(list);
+        const best = thumbnails.getBestResolution();
+        console.log("Best thumbnail:", best);
+        if (best && best.url === 'thumb3.jpg') {
+            console.log("✅ OK: getBestResolution funziona correttamente.");
+        } else {
+            console.log("❌ Errore: getBestResolution ha ritornato una thumbnail errata o undefined.");
+        }
+
+        // Test list property is public and maintained
+        console.log("List size:", thumbnails.list.length);
+        if (thumbnails.list.length === 3) {
+            console.log("✅ OK: Proprietà list mantenuta correttamente.");
+        } else {
+            console.log("❌ Errore: Proprietà list non valida.");
+        }
+
+        // Test getBestResolution on empty list
+        const emptyThumbnails = new Thumbnails([]);
+        const noBest = emptyThumbnails.getBestResolution();
+        if (noBest === undefined) {
+            console.log("✅ OK: getBestResolution ritorna undefined per lista vuota.");
+        } else {
+            console.log("❌ Errore: getBestResolution non ritorna undefined per lista vuota.");
+        }
+    } catch (e) {
+        console.error("❌ Errore in Test Thumbnails:", e);
+    }
+
+    // 6. Test Client Class
+    console.log("\n--- 6. Test Client Class ---");
+    try {
+        const client = new Client();
+        console.log("Client default values:");
+        console.log(`apiKey: ${client.apiKey}`);
+        console.log(`clientVersion: ${client.clientVersion}`);
+        console.log(`idToken: ${client.idToken}`);
+        
+        console.log("Calling ensureConfig()...");
+        await client.ensureConfig();
+        console.log("Client values after ensureConfig():");
+        console.log(`apiKey: ${client.apiKey ? 'OK' : 'Failed'}`);
+        console.log(`clientVersion: ${client.clientVersion}`);
+        console.log(`idToken: ${client.idToken}`);
+
+        if (client.apiKey) {
+            console.log("✅ OK: Client initialization & ensureConfig works.");
+            
+            console.log("Testing request method (browse)...");
+            const res = await client.request('browse', { browseId: 'FEhistory' });
+            console.log(`Request completed successfully. Response keys: ${Object.keys(res).join(', ')}`);
+            console.log("✅ OK: Client request works.");
+        } else {
+            console.log("❌ Errore: client.apiKey is null after ensureConfig.");
+        }
+    } catch (e) {
+        console.error("❌ Errore in Test Client:", e);
+    }
+
     console.log("\n=== FINE TEST ===");
 }
 
 runTests();
+

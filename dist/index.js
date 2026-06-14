@@ -355,6 +355,126 @@ async function scrapeTasteData(injectedConfig, customPlaylists = [], limit = 500
   };
 }
 
+// src/client.ts
+function getFallbackClientVersion2() {
+  const d = /* @__PURE__ */ new Date();
+  d.setDate(d.getDate() - 2);
+  const yyyymmdd = d.toISOString().split("T")[0].replace(/-/g, "");
+  return `2.${yyyymmdd}.00.00`;
+}
+function getSapisidFromCookieString(cookieString) {
+  const match = cookieString.match(/__Secure-3PAPISID=([^;]+)/) || cookieString.match(/__Secure-1PAPISID=([^;]+)/) || cookieString.match(/SAPISID=([^;]+)/);
+  return match ? match[1] : null;
+}
+async function getSApiSidHash2(sapisid, origin = "https://www.youtube.com") {
+  if (!sapisid) return null;
+  try {
+    const timestamp = Math.floor(Date.now() / 1e3);
+    const input = `${timestamp} ${sapisid} ${origin}`;
+    const encoder = new TextEncoder();
+    const data = encoder.encode(input);
+    const buffer = await crypto.subtle.digest("SHA-1", data);
+    const hash = Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    return `${timestamp}_${hash}`;
+  } catch (e) {
+    console.error("[Client] Failed to generate SAPISIDHASH", e);
+    return null;
+  }
+}
+var Client = class {
+  apiKey = null;
+  clientVersion = "";
+  idToken = null;
+  cookie = "";
+  constructor(options = {}) {
+    this.cookie = options.cookie !== void 0 ? options.cookie : typeof document !== "undefined" ? document.cookie : "";
+    let resolvedApiKey = options.apiKey !== void 0 ? options.apiKey : null;
+    let resolvedClientVersion = options.clientVersion !== void 0 ? options.clientVersion : null;
+    let resolvedIdToken = options.idToken !== void 0 ? options.idToken : null;
+    if (typeof window !== "undefined" && window.ytcfg) {
+      const ytcfg = window.ytcfg;
+      if (typeof ytcfg.get === "function") {
+        if (resolvedApiKey === null) resolvedApiKey = ytcfg.get("INNERTUBE_API_KEY") || null;
+        if (resolvedClientVersion === null) resolvedClientVersion = ytcfg.get("INNERTUBE_CLIENT_VERSION") || null;
+        if (resolvedIdToken === null) resolvedIdToken = ytcfg.get("ID_TOKEN") || null;
+      } else {
+        if (resolvedApiKey === null) resolvedApiKey = ytcfg.INNERTUBE_API_KEY || null;
+        if (resolvedClientVersion === null) resolvedClientVersion = ytcfg.INNERTUBE_CLIENT_VERSION || null;
+        if (resolvedIdToken === null) resolvedIdToken = ytcfg.ID_TOKEN || null;
+      }
+    }
+    this.apiKey = resolvedApiKey;
+    this.clientVersion = resolvedClientVersion || getFallbackClientVersion2();
+    this.idToken = resolvedIdToken;
+  }
+  /**
+   * Asynchronously resolves config parameters if apiKey is not set yet.
+   * Fetches and parses YouTube's home page HTML using the scraper logic.
+   */
+  async ensureConfig() {
+    if (this.apiKey) {
+      return;
+    }
+    const config = await getInnerTubeConfig();
+    this.apiKey = config.apiKey;
+    if (config.clientVersion) {
+      this.clientVersion = config.clientVersion;
+    }
+    this.idToken = config.idToken;
+  }
+  /**
+   * Dispatches an authenticated or unauthenticated POST request to the specified InnerTube endpoint.
+   */
+  async request(endpoint, payload) {
+    await this.ensureConfig();
+    const cleanEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
+    const url = `https://www.youtube.com/youtubei/v1/${cleanEndpoint}?key=${this.apiKey}&prettyPrint=false`;
+    const headers = {
+      "Content-Type": "application/json",
+      "X-Youtube-Client-Name": "1",
+      "X-Youtube-Client-Version": this.clientVersion
+    };
+    if (this.idToken) {
+      headers["X-Youtube-Identity-Token"] = this.idToken;
+    }
+    const activeCookie = this.cookie || (typeof document !== "undefined" ? document.cookie : "");
+    if (activeCookie) {
+      headers["Cookie"] = activeCookie;
+      const sapisid = getSapisidFromCookieString(activeCookie);
+      if (sapisid) {
+        const authHash = await getSApiSidHash2(sapisid, "https://www.youtube.com");
+        if (authHash) {
+          headers["Authorization"] = `SAPISIDHASH ${authHash}`;
+        }
+      }
+    }
+    const bodyPayload = payload || {};
+    const requestBody = {
+      ...bodyPayload,
+      context: {
+        ...bodyPayload.context,
+        client: {
+          clientName: "WEB",
+          clientVersion: this.clientVersion,
+          hl: "en",
+          gl: "US",
+          ...bodyPayload.context?.client
+        }
+      }
+    };
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(requestBody),
+      credentials: "include"
+    });
+    if (!response.ok) {
+      throw new Error(`InnerTube request failed with status: ${response.status}`);
+    }
+    return response.json();
+  }
+};
+
 // src/comments.ts
 function findValue(obj, path, defaultValue = void 0) {
   const parts = path.split(".");
@@ -711,7 +831,73 @@ async function fetchSubtitlesFromYouTube(videoId, language = "en") {
     return [];
   }
 }
+
+// src/base.ts
+var Base = class {
+  constructor(client) {
+    this.client = client;
+  }
+  client;
+};
+
+// src/continuable.ts
+var Continuable = class extends Base {
+  items = [];
+  continuation = void 0;
+  async next(count) {
+    const newItems = [];
+    if (count === void 0) {
+      const result = await this.fetch();
+      this.items.push(...result.items);
+      this.continuation = result.continuation ?? null;
+      newItems.push(...result.items);
+    } else {
+      while (newItems.length < count) {
+        if (this.items.length > 0 && (this.continuation === null || this.continuation === void 0)) {
+          break;
+        }
+        const result = await this.fetch();
+        if (result.items.length === 0) {
+          this.continuation = result.continuation ?? null;
+          break;
+        }
+        this.items.push(...result.items);
+        this.continuation = result.continuation ?? null;
+        newItems.push(...result.items);
+      }
+    }
+    return newItems;
+  }
+};
+
+// src/thumbnails.ts
+var Thumbnails = class {
+  list;
+  constructor(list) {
+    this.list = list;
+  }
+  getBestResolution() {
+    if (!this.list || this.list.length === 0) {
+      return void 0;
+    }
+    let best = this.list[0];
+    let maxResolution = best.width * best.height;
+    for (let i = 1; i < this.list.length; i++) {
+      const thumb = this.list[i];
+      const resolution = thumb.width * thumb.height;
+      if (resolution > maxResolution) {
+        maxResolution = resolution;
+        best = thumb;
+      }
+    }
+    return best;
+  }
+};
 export {
+  Base,
+  Client,
+  Continuable,
+  Thumbnails,
   createCommentsApiRequestOptions,
   extractPlayerResponse,
   extractVideoEntries,
