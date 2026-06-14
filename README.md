@@ -12,7 +12,6 @@ To ensure complete transparency, here is a comparison between **TubeZero** and t
 | :--- | :--- | :--- | :--- |
 | **Architecture** | Lite, pure fetch client, zero external dependencies | Full-featured monolithic SDK mapping almost all renderers | Object-oriented TypeScript query client |
 | **Optimization** | Client-side & Web-Extension optimized | Heavy backend/server-side oriented | Node.js oriented with class-based queries |
-| **License** | PolyForm Small Business License 1.0.0 | MIT License | MIT License |
 | **Pros & Use Cases** | Extremely lightweight, fast, no compilation required. Native extraction of `SAPISID` and `SAPISIDHASH` via Web Crypto API for authenticated requests. | Complete coverage of features (deciphering video download signatures, live chat, dedicated interfaces for Music/Studio/Kids). | Class-based abstractions, clean TypeScript interface for querying videos, channels, and playlists. |
 | **Limitations** | Lacks video download deciphering, full catalog of renderer schemas, and dedicated YT Music/Studio/Kids interfaces. | Large bundle size, complex codebase, requires polyfills/build tools to run in client/extension frontends. | Requires compilation, coupled with Node.js dependencies, not designed for direct client-side integration. |
 
@@ -89,17 +88,6 @@ transcript.forEach(segment => {
     console.log(`[${segment.start}s - ${segment.duration}s]: ${segment.text}`);
 });
 ```
-
----
-
-## ⚖️ License: PolyForm Small Business License 1.0.0
-
-This software is released under the **PolyForm Small Business License 1.0.0**.
-
-### What does this mean?
-* **Free Use:** Individuals and **small businesses** (defined as companies with fewer than **250 employees** and less than **$10,000,000 USD** in annual revenue, including affiliates) can use, copy, modify, and distribute the software for free.
-* **Commercial Restrictions for Large Enterprises:** Companies exceeding the above thresholds (more than 250 employees or over $10M USD in revenue) cannot use this package for commercial purposes without securing a separate commercial license from the copyright holder.
-* *Note:* This license protects reverse-engineering efforts from being incorporated into enterprise products by large corporations for free, while remaining free for the community, indie developers, and startups.
 
 ---
 
