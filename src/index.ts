@@ -1,6 +1,6 @@
 /**
  * index.ts
- * Entry point for the TubeVanilla library.
+ * Entry point for the TubeZero library.
  * Consolidates all scraping, comments, and subtitles functionalities.
  */
 
