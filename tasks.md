@@ -1,99 +1,126 @@
-# Feature Mapping: YouTubei vs TubeZero
+# Roadmap & Philosophical Alignment: TubeVanilla vs `youtubei`
 
-This document provides an overview of the capabilities of YouTube's internal API (InnerTube), comparing the features covered by **TubeZero** against a full-scale SDK implementation (such as LuanRT's `youtubei.js`).
-
----
-
-## 📊 Summary Statistics
-
-* **Implemented Features:** **6** (History, Likes, Watch Later, Playlists, Comments, Subtitles)
-* **Missing Features (Replicable):** **6** (Search, Home/Trending Feeds, Subscriptions Feed, Video Details, Search Suggestions, Live Chat)
-* **Critical / Non-Replicable Features (Requires Extension or Proxy/Backend):** **4** (Write Actions like Like/Subscribe, Advanced Session Management, Video Downloads/Direct Streaming, Creator Studio)
+This document maps out the classes, properties, and interfaces of Vincent/SuspiciousLookingOwl's `youtubei` library, assessing their feasibility in the client-side/extension context of **TubeVanilla**, and outlines an implementation roadmap.
 
 ---
 
-## 🔍 Feature Breakdown
+## 👁️ The TubeVanilla Philosophy & Core Constraints
 
-### 1. User Library & Feeds
-| Feature | Status | Details / Notes |
-| :--- | :---: | :--- |
-| **Watch History** | **Implemented** | Uses the `FEhistory` endpoint with HTML scraping fallback. Supports pagination. |
-| **Liked Videos (Likes)** | **Implemented** | Uses the `VLLL` endpoint with HTML scraping fallback (`list=LL`). |
-| **Watch Later** | **Implemented** | Uses the `VLWL` endpoint with HTML scraping fallback (`list=WL`). |
-| **Custom Playlists** | **Implemented** | Uses the `VL<id>` endpoint with HTML scraping fallback (`list=<id>`). |
-| **Subscriptions Feed** | Missing | Replicable using the `FEsubscriptions` endpoint (requires valid session cookies). |
-| **Home / Recommendations Feed** | Missing | Replicable using the `FEwhat_to_watch` endpoint. |
-| **Trending Feed** | Missing | Replicable using the `FEtrending` endpoint. |
+Before mapping the API, we must evaluate all features against **TubeVanilla's three core philosophical pillars**:
 
-### 2. Video Details & Subtitles (Video & Media)
-| Feature | Status | Details / Notes |
-| :--- | :---: | :--- |
-| **Subtitles Extraction** | **Implemented** | Track extraction from `playerCaptionsTracklistRenderer`, XML/JSON download, and regex-based parsing. |
-| **Video Details (Metadata, Views, Desc.)** | Partial | Partially extracted from `ytInitialPlayerResponse` during subtitle retrieval. |
-| **Related / Suggested Videos** | Missing | Replicable by parsing the `watchNextResults` nodes in `ytInitialData`. |
-| **Video Download / Stream Decryption** | **Not Feasible (Frontend)** | Requires deciphering video stream signatures (`signatureCipher`) and loading binary streams, which is blocked by browser CORS and security policies. |
-
-### 3. Comments & Community
-| Feature | Status | Details / Notes |
-| :--- | :---: | :--- |
-| **Comments Retrieval** | **Implemented** | Initial token extraction and pagination via `youtubei/v1/next` (parsing `commentEntityPayload` nodes). |
-| **Comment Replies** | Missing | Replicable by paginating with reply-specific tokens (`commentThreadRenderer`). |
-| **Interaction (Posting comments, liking)** | **Critical / Non-Replicable** | Requires authorization tokens and active cookies. Feasible in browser extensions, but blocked by CORS in standard web applications. |
-
-### 4. Search
-| Feature | Status | Details / Notes |
-| :--- | :---: | :--- |
-| **Search (Videos, Playlists, Channels)** | Missing | Replicable by sending POST requests to `youtubei/v1/search` with a `query` parameter. |
-| **Search Autocomplete** | Missing | Replicable via the public JSON autocomplete endpoint. |
-
-### 5. Write Actions & Authentication
-| Feature | Status | Details / Notes |
-| :--- | :---: | :--- |
-| **Subscribe to Channel** | **Non-Replicable** | Requires POST to `subscription/subscribe` with `HttpOnly` cookies and security headers (CORS blocks external domains). |
-| **Like / Dislike Video** | **Non-Replicable** | Requires POST to `like/like` with valid cookies. Subject to same security restrictions. |
-| **Playlist Management (Create, Add, Remove)** | **Non-Replicable** | Requires InnerTube endpoints `playlist/create` or `browse/edit`. |
+1. **Zero External Dependencies:** 
+   - *Constraint:* No npm packages like `protobufjs`, `node-fetch`, or Node-specific `crypto`.
+   - *Impact:* We cannot dynamically compile Protobuf payloads for complex search filters or tokens. We must use **static pre-computed byte buffers / base64 templates** for search option encoding. All crypto operations must run via the native browser **Web Crypto API** (`crypto.subtle`).
+2. **Client-Side & Browser-Extension First (CSP Compliant):**
+   - *Constraint:* Modern browser environments and Chrome Extension Manifest V3 strictly prohibit dynamic code execution (`eval` or `new Function`).
+   - *Impact:* Deciphering streaming signatures (`signatureCipher` / `n-parameter` throttling) requires fetching and dynamically executing YouTube's active player JS bundle (e.g., `base.js`). Because of CSP rules, **deciphering signatures is strictly UNREACHABLE** in a pure MV3 extension without delegating to a remote server. TubeVanilla remains a **metadata-only / read-only scraper**.
+3. **Implicit Cookie-Based Auth:**
+   - *Constraint:* Access user data seamlessly inside browser extensions or on-domain SPAs.
+   - *Impact:* We reject heavy OAuth redirect/token flows in favor of automatically reading the active `SAPISID` cookie and generating the `SAPISIDHASH` header on-the-fly. **Full OAuth state management is flagged as Out-of-Scope / Unnecessary**.
 
 ---
 
-## 🛡️ Analysis of Pure Frontend Limitations (No Backend, No Extension)
+## 🚫 Reachability Analysis
 
-If **TubeZero** is used in a standard **Single Page Application (SPA)** without backend helper servers:
-1. **CORS:** YouTube rejects requests from unauthorized origins. All requests to `youtube.com/youtubei/...` will fail.
-2. **Session Cookies (`HttpOnly`):** To access private feeds (history, likes), the library relies on browser cookies. However, if the application runs on a different domain (e.g., `myapp.com`), it cannot access `youtube.com` cookies due to `SameSite` and `HttpOnly` security constraints.
+### 🟢 Reachable (Fits Philosophy)
+* **Metadata Queries & Feeds:** `search()`, `getVideo()`, `getPlaylist()`, `getChannel()`. Highly reachable by sending POST requests to `/youtubei/v1/` endpoints with static JSON payloads and extracting data recursively.
+* **Pagination (`Continuable`):** The recursive locator for `continuationToken` allows fetching subsequent pages of videos, comments, and replies without external engines.
+* **Captions & Comments:** Standard text extraction from the web-page or `/youtubei/v1/next` endpoints.
+* **YouTube Music Client:** Changing request payloads to route through the `WEB_REMIX` client name and `/youtubei/v1/music` endpoints is fully feasible using pure fetch.
 
-### Bypassing These Limits:
-* **Browser Extension:** Running the library inside a browser extension eliminates CORS issues, and the extension can access YouTube's authentication cookies via the Chrome APIs or by reading page headers directly.
-* **CORS Proxy:** Routing calls through a reverse proxy to strip Origin headers.
+### 🔴 Unreachable / Prohibited by Philosophy
+* **Video Deciphering & Downloads (`signatureCipher` / Throttling):** Requires dynamic JS execution. **UNREACHABLE** under MV3 CSP rules. TubeVanilla will not support direct stream URL deciphering.
+* **OAuth Login / Refresh Flows:** Exposing client secrets and handling redirect endpoints is hostile to client-side SPAs. **UNREACHABLE / AVOIDED**; replaced by implicit cookie extraction.
+* **Protobuf Token Builders:** Dynamically building search options using Protobuf compilers is bloated. **PROHIBITED**; replaced by a static dictionary of pre-computed search filter strings.
 
 ---
 
-## 🛑 Missing Features to Achieve Full Parity with YouTube.js and youtubei
+## 📊 Feature & Class Mapping Matrix
 
-To reach feature parity with comprehensive SDKs like LuanRT/YouTube.js or SuspiciousLookingOwl/youtubei, **TubeZero** would need to implement the following features:
+### 1. General & Infrastructure
+| Class / Interface | Feasibility | TubeVanilla Strategy | Timeline / Sprint |
+| :--- | :---: | :--- | :---: |
+| **Base** | **High** | Simple class holding the shared client context. | Sprint 1 |
+| **Continuable<T>** | **High** | Core abstract class to hold paginated item lists and continuation logic. | Sprint 1 |
+| **Client** | **High** | Main client entry point coordinating standard requests. | Sprint 1 |
+| **Thumbnails** | **High** | Helper helper to parse and sort thumbnail lists. | Sprint 1 |
+| **VideoCompact** | **High** | Data model representing video list items. | Sprint 2 |
+| **PlaylistCompact** | **High** | Data model representing playlist list items. | Sprint 2 |
+| **BaseChannel** | **High** | Model representing a channel's main details and tabs. | Sprint 2 |
+| **BaseVideo** | **High** | Model representing common video metadata. | Sprint 2 |
+| **Playlist** | **High** | Model representing playlists and their continuable items. | Sprint 2 |
+| **Video** | **High** | Extends `BaseVideo` with local comments and chapters. | Sprint 2 |
+| **SearchResult** | **High** | Continuable container for parsed search layouts. | Sprint 2 |
+| **Channel** | **High** | Full channel model (adds banners, links, and descriptions). | Sprint 3 |
+| **PlaylistVideos** | **High** | Paginated continuation of playlist items. | Sprint 2 |
+| **VideoRelated** | **High** | Watch-next related videos pagination. | Sprint 3 |
+| **Comment** | **High** | Parsed comments from next pages. | Sprint 3 |
+| **Reply** | **High** | Comments replies parsing. | Sprint 3 |
+| **VideoComments** | **High** | Paginated continuation of video comments. | Sprint 3 |
+| **CommentReplies** | **High** | Paginated continuation of replies. | Sprint 3 |
+| **VideoCaptions** | **High** | Caption/Subtitle track selector. | Sprint 3 |
+| **Caption** | **High** | Individual caption metadata. | Sprint 3 |
+| **CaptionLanguage** | **High** | Language code helper. | Sprint 3 |
+| **ChannelVideos** | **High** | Paginated continuation of channel videos. | Sprint 4 |
+| **ChannelShorts** | **High** | Paginated continuation of channel shorts. | Sprint 4 |
+| **ChannelLive** | **High** | Paginated continuation of channel live streams. | Sprint 4 |
+| **ChannelPlaylists** | **High** | Paginated continuation of channel playlists. | Sprint 4 |
+| **ChannelPosts** | **Low** | *Low Priority:* Community tab posts. | Sprint 4 |
+| **LiveVideo** | **High** | Stream status & live chat container. | Sprint 4 |
+| **Chat** | **High** | Fetch-based polling client for chat messages. | Sprint 4 |
+| **MixPlaylist** | **Medium** | Mix playlist metadata mapping. | Sprint 4 |
+| **OAuth** | 🔴 **Prohibited** | **Out-of-Scope.** Auth is managed exclusively via the cookie-based `SAPISIDHASH` pipeline. | Out-of-Scope |
 
-1. **Video Download & Signature Deciphering:**
-   - **What's Missing:** Extracting the player JavaScript bundle (e.g., `base.js`), parsing and deciphering signature encryption algorithms (`signatureCipher` / `n-parameter` throttling), and combining audio/video streams.
-   - **Status in TubeZero:** Currently unsupported. Implementing this requires JS execution sandbox capabilities (difficult in pure extension content scripts/pure fetch environments without overhead).
+### 2. YouTube Music Namespace
+| Class / Interface | Feasibility | TubeVanilla Strategy | Timeline / Sprint |
+| :--- | :---: | :--- | :---: |
+| **MusicBase** | **High** | Base class for music entities. | Sprint 5 |
+| **MusicClient** | **High** | Child client that targets the `WEB_REMIX` InnerTube endpoints. | Sprint 5 |
+| **MusicSearchResult**| **High** | Continuable search results for music. | Sprint 5 |
+| **MusicSongCompact** | **High** | Song details layout parser. | Sprint 5 |
+| **MusicVideoCompact**| **High** | Video details layout parser. | Sprint 5 |
+| **MusicAlbumCompact** | **High** | Album details layout parser. | Sprint 5 |
+| **MusicArtistCompact**| **High** | Artist details layout parser. | Sprint 5 |
+| **MusicPlaylistCompact**|**High**| Playlist details layout parser. | Sprint 5 |
+| **MusicBaseArtist**  | **High** | Artist details layout parser. | Sprint 5 |
+| **MusicBaseAlbum**   | **High** | Album details layout parser. | Sprint 5 |
+| **MusicBaseChannel** | **High** | Music channel layout parser. | Sprint 5 |
+| **MusicLyrics**      | **High** | Fetches lyrics from player browse payloads. | Sprint 5 |
 
-2. **Full Catalog of Renderer Mappings:**
-   - **What's Missing:** A unified and complete parser schema for all InnerTube renderer layout models (e.g., `compactVideoRenderer`, `gridVideoRenderer`, `shelfRenderer`, `messageRenderer`, etc.).
-   - **Status in TubeZero:** Uses heuristic recursive scans (`extractVideoEntries`) which capture main feeds but miss complex nested layouts and edge-case cards.
+### 3. Interfaces
+| Interface Name | Feasibility | Description | Timeline / Sprint |
+| :--- | :---: | :--- | :---: |
+| **Thumbnail** | **High** | Image object `{ url, width, height }`. | Sprint 1 |
+| **MusicMetadata** | **High** | Music video track metadata. | Sprint 2 |
+| **Shelf** | **High** | Renders grouped layouts. | Sprint 2 |
+| **AuthenticateResponse**| 🔴 **Prohibited** | **Out-of-Scope** (Relates to OAuth). | Out-of-Scope |
+| **AuthorizeResponse**| 🔴 **Prohibited** | **Out-of-Scope** (Relates to OAuth). | Out-of-Scope |
+| **RefreshResponse** | 🔴 **Prohibited** | **Out-of-Scope** (Relates to OAuth). | Out-of-Scope |
 
-3. **Dedicated Client Interfaces (YT Music, YT Kids, YT Studio):**
-   - **What's Missing:** Specific headers, clients, and payload schemas designed to communicate with YouTube Music (`/youtubei/v1/music`), YouTube Kids, and YouTube Creator Studio endpoints.
-   - **Status in TubeZero:** Standard main-client YouTube Web/Mobile requests only.
+---
 
-4. **Interaction & Subscription Mutations (Write Actions):**
-   - **What's Missing:** Dedicated functions for write mutations, including:
-     - Subscribing/unsubscribing to channels (`subscription/subscribe` and `subscription/unsubscribe`).
-     - Liking, disliking, or removing reactions from videos (`like/like`, `like/dislike`, `like/removelike`).
-     - Liking or replying to comments (`comment/perform_comment_action`).
-   - **Status in TubeZero:** Read-only operations only.
+## 📅 Proposed Implementation Timeline
 
-5. **Playlist Mutations:**
-   - **What's Missing:** Adding/removing items from playlists, reordering tracks, and creating new playlists via the `playlist/create` and `browse/edit` endpoints.
-   - **Status in TubeZero:** Read-only playlist data extraction.
+### 🏃 Sprint 1: Infrastructure & Core Client (Target: Week 1)
+* [ ] Create **`Base`** class to inject the Client context.
+* [ ] Implement **`Continuable<T>`** abstraction.
+* [ ] Implement core **`Client`** class using Web Crypto API.
+* [ ] Implement **`Thumbnail`** / **`Thumbnails`** handlers.
 
-6. **Live Chat Support:**
-   - **What's Missing:** An active polling client or Server-Sent Events (SSE) consumer for `live_chat/get_live_chat` endpoints to stream chat messages in real-time.
-   - **Status in TubeZero:** Unsupported.
+### 🏃 Sprint 2: Video, Channel, & Playlist Foundations (Target: Week 2)
+* [ ] Implement search parsing into **`SearchResult`** using **static base64 filter strings** instead of dynamic Protobuf builders.
+* [ ] Implement **`Client.getVideo()`** returning **`Video`** (without deciphering signatures).
+* [ ] Implement **`Client.getPlaylist()`** returning **`Playlist`** with **`PlaylistVideos`**.
+
+### 🏃 Sprint 3: Comments, Captions, and Watch-Next (Target: Week 3)
+* [ ] Implement watch page connections: **`VideoRelated`** and **`VideoCaptions`**.
+* [ ] Implement **`VideoComments`** and **`CommentReplies`** using our light heuristic JSON scanner.
+
+### 🏃 Sprint 4: Channel Tabs, Live streams & Live Chat (Target: Week 4)
+* [ ] Extend channel queries into **`Channel`** (banners, about section).
+* [ ] Implement tab continuation lists (**`ChannelVideos`**, **`ChannelShorts`**, **`ChannelLive`**, **`ChannelPlaylists`**).
+* [ ] Implement live stream support (**`LiveVideo`** and a fetch-based poll loop for **`Chat`**).
+
+### 🏃 Sprint 5: YouTube Music Client (Target: Week 5)
+* [ ] Implement **`MusicClient`** (using the `WEB_REMIX` payload headers).
+* [ ] Implement YouTube Music objects: **`MusicSearchResult`**, **`MusicSongCompact`**, **`MusicAlbumCompact`**, **`MusicLyrics`**.
