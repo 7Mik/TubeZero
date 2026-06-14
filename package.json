@@ -1,0 +1,37 @@
+{
+  "name": "tubezero",
+  "version": "1.0.0",
+  "description": "Zero-dependency, ultra-lightweight InnerTube client optimized for client-side environments.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "dev": "tsup src/index.ts --format esm --watch",
+    "test": "node test.mjs"
+  },
+  "keywords": [
+    "youtube",
+    "innertube",
+    "scraper",
+    "subtitles",
+    "comments",
+    "client-side",
+    "browser-extension"
+  ],
+  "author": "",
+  "license": "PolyForm-Small-Business-1.0.0",
+  "devDependencies": {
+    "tsup": "^8.0.2",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  }
+}
