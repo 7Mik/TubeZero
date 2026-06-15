@@ -1,7 +1,7 @@
 {
   "name": "tubezero",
   "version": "1.0.0",
-  "description": "Zero-dependency, ultra-lightweight InnerTube client optimized for client-side environments.",
+  "description": "Zero-dependency, ultra-lightweight YouTube InnerTube client optimized for client-side environments, browser extensions, and hybrid apps.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -21,17 +21,29 @@
   "keywords": [
     "youtube",
     "innertube",
-    "scraper",
-    "subtitles",
-    "comments",
+    "youtube-api",
+    "youtube-scraper",
+    "youtube-parser",
+    "youtube-client",
+    "innertube-client",
     "client-side",
-    "browser-extension"
+    "browser-extension",
+    "web-extension",
+    "manifest-v3",
+    "zero-dependencies",
+    "typescript",
+    "youtube-comments",
+    "youtube-subtitles",
+    "youtube-transcript",
+    "youtube-music",
+    "lightweight-scraper"
   ],
   "author": "",
   "license": "PolyForm-Small-Business-1.0.0",
   "devDependencies": {
     "tsup": "^8.0.2",
     "tsx": "^4.7.1",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "youtubei": "^1.8.10"
   }
 }

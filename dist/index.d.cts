@@ -85,6 +85,34 @@ declare function fetchInnerTubeFeed(apiKey: string, clientVersion: string, idTok
 declare function scrapeTasteData(injectedConfig?: Partial<InnerTubeConfig> | null, customPlaylists?: CustomPlaylist[], limit?: number): Promise<TasteData>;
 
 /**
+ * client.ts
+ * Core InnerTube Client class for TubeVanilla.
+ * Optimized for client-side environments with zero external dependencies.
+ */
+interface ClientOptions {
+    apiKey?: string | null;
+    clientVersion?: string;
+    idToken?: string | null;
+    cookie?: string;
+}
+declare class Client {
+    apiKey: string | null;
+    clientVersion: string;
+    idToken: string | null;
+    cookie: string;
+    constructor(options?: ClientOptions);
+    /**
+     * Asynchronously resolves config parameters if apiKey is not set yet.
+     * Fetches and parses YouTube's home page HTML using the scraper logic.
+     */
+    ensureConfig(): Promise<void>;
+    /**
+     * Dispatches an authenticated or unauthenticated POST request to the specified InnerTube endpoint.
+     */
+    request(endpoint: string, payload: any): Promise<any>;
+}
+
+/**
  * comments.ts
  * Scrapes YouTube video comments using InnerTube endpoints and HTML scraping.
  * Works client-side (Chrome extensions, desktop apps, or CORS-proxied environments).
@@ -147,4 +175,30 @@ declare function parseXmlTranscriptRegex(xmlText: string): TranscriptSegment[];
  */
 declare function fetchSubtitlesFromYouTube(videoId: string, language?: string): Promise<TranscriptSegment[]>;
 
-export { type CommentEntry, type CommentsApiRequestOptions, type CustomPlaylist, type CustomPlaylistData, type InnerTubeConfig, type TasteData, type TranscriptSegment, type VideoEntry, createCommentsApiRequestOptions, extractPlayerResponse, extractVideoEntries, fetchCommentsFromYouTube, fetchInnerTubeFeed, fetchSubtitlesFromYouTube, fetchYtInitialData, findContinuationToken, getInnerTubeConfig, getSApiSidHash, getSapisidFromCookie, parseXmlTranscriptRegex, scrapeTasteData };
+declare class Base {
+    client: Client;
+    constructor(client: Client);
+}
+
+declare abstract class Continuable<T> extends Base {
+    items: T[];
+    continuation?: string | null;
+    protected abstract fetch(): Promise<{
+        items: T[];
+        continuation?: string | null;
+    }>;
+    next(count?: number): Promise<T[]>;
+}
+
+interface Thumbnail {
+    url: string;
+    width: number;
+    height: number;
+}
+declare class Thumbnails {
+    list: Thumbnail[];
+    constructor(list: Thumbnail[]);
+    getBestResolution(): Thumbnail | undefined;
+}
+
+export { Base, Client, type ClientOptions, type CommentEntry, type CommentsApiRequestOptions, Continuable, type CustomPlaylist, type CustomPlaylistData, type InnerTubeConfig, type TasteData, type Thumbnail, Thumbnails, type TranscriptSegment, type VideoEntry, createCommentsApiRequestOptions, extractPlayerResponse, extractVideoEntries, fetchCommentsFromYouTube, fetchInnerTubeFeed, fetchSubtitlesFromYouTube, fetchYtInitialData, findContinuationToken, getInnerTubeConfig, getSApiSidHash, getSapisidFromCookie, parseXmlTranscriptRegex, scrapeTasteData };
