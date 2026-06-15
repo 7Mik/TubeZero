@@ -123,6 +123,7 @@ export class VideoCompact extends Base {
         if (suffix === 'K') return Math.round(num * 1000);
         if (suffix === 'M') return Math.round(num * 1000000);
         if (suffix === 'B') return Math.round(num * 1000000000);
-        return Math.round(num) || null;
+        const result = Math.round(num);
+        return isNaN(result) ? null : result;
     }
 }

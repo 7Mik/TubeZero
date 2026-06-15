@@ -537,7 +537,8 @@ var VideoCompact = class extends Base {
     if (suffix === "K") return Math.round(num * 1e3);
     if (suffix === "M") return Math.round(num * 1e6);
     if (suffix === "B") return Math.round(num * 1e9);
-    return Math.round(num) || null;
+    const result = Math.round(num);
+    return isNaN(result) ? null : result;
   }
 };
 
