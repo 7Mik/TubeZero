@@ -10,6 +10,9 @@ export abstract class Continuable<T> extends Base {
         const newItems: T[] = [];
 
         if (count === undefined) {
+            if (this.items.length > 0 && (this.continuation === null || this.continuation === undefined)) {
+                return [];
+            }
             const result = await this.fetch();
             this.items.push(...result.items);
             this.continuation = result.continuation ?? null;
@@ -32,6 +35,6 @@ export abstract class Continuable<T> extends Base {
             }
         }
 
-        return newItems;
+        return count === undefined ? newItems : newItems.slice(0, count);
     }
 }

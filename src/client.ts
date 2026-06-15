@@ -55,7 +55,7 @@ export class Client {
     constructor(options: ClientOptions = {}) {
         this.cookie = options.cookie !== undefined 
             ? options.cookie 
-            : (typeof document !== 'undefined' ? document.cookie : '');
+            : '';
 
         let resolvedApiKey = options.apiKey !== undefined ? options.apiKey : null;
         let resolvedClientVersion = options.clientVersion !== undefined ? options.clientVersion : null;
@@ -102,6 +102,10 @@ export class Client {
     async request(endpoint: string, payload: any): Promise<any> {
         await this.ensureConfig();
 
+        if (!this.apiKey) {
+            throw new Error("[Client] InnerTube API key is not configured.");
+        }
+
         const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
         const url = `https://www.youtube.com/youtubei/v1/${cleanEndpoint}?key=${this.apiKey}&prettyPrint=false`;
 
@@ -127,7 +131,7 @@ export class Client {
             }
         }
 
-        const bodyPayload = payload || {};
+        const bodyPayload = (payload && typeof payload === 'object') ? payload : {};
         const requestBody = {
             ...bodyPayload,
             context: {

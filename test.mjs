@@ -118,14 +118,14 @@ async function runTests() {
         console.log("Client default values:");
         console.log(`apiKey: ${client.apiKey}`);
         console.log(`clientVersion: ${client.clientVersion}`);
-        console.log(`idToken: ${client.idToken}`);
+        console.log(`idToken: ${client.idToken ? '[REDACTED]' : 'null'}`);
         
         console.log("Calling ensureConfig()...");
         await client.ensureConfig();
         console.log("Client values after ensureConfig():");
         console.log(`apiKey: ${client.apiKey ? 'OK' : 'Failed'}`);
         console.log(`clientVersion: ${client.clientVersion}`);
-        console.log(`idToken: ${client.idToken}`);
+        console.log(`idToken: ${client.idToken ? '[REDACTED]' : 'null'}`);
 
         if (client.apiKey) {
             console.log("✅ OK: Client initialization & ensureConfig works.");

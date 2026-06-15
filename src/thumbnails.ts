@@ -17,11 +17,11 @@ export class Thumbnails {
         }
 
         let best: Thumbnail = this.list[0];
-        let maxResolution = best.width * best.height;
+        let maxResolution = (best.width || 0) * (best.height || 0);
 
         for (let i = 1; i < this.list.length; i++) {
             const thumb = this.list[i];
-            const resolution = thumb.width * thumb.height;
+            const resolution = (thumb.width || 0) * (thumb.height || 0);
             if (resolution > maxResolution) {
                 maxResolution = resolution;
                 best = thumb;
