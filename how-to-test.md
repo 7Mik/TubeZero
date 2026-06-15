@@ -46,3 +46,30 @@ node benchmark.mjs --video "jNQXAC9IVRw"
 
 ### Expected Output
 The script will execute queries sequentially on both libraries and print the execution time in milliseconds (ms) directly to the console. It will also generate a detailed JSON dump inside the `benchmark_results/` folder for in-depth analysis of the raw payload sizes and scraped elements.
+
+---
+
+## 3. In-Browser End-to-End Testing (`browser-test.html`)
+
+TubeVanilla is designed primarily for client-side environments (Manifest V3 extensions, SPAs). We provide an HTML test harness that imports the compiled module (`dist/index.js`) to ensure it executes securely without violating modern CSP constraints or causing CORS issues.
+
+### How to Run
+Since the file loads an ES Module, it must be run through a local HTTP server (simply opening the file via `file://` will cause CORS restrictions on the module import).
+
+Run the following command to serve the current directory:
+
+```bash
+npx serve -p 3000
+```
+
+Once the server is running, open your browser and navigate to:
+[http://localhost:3000/browser-test.html](http://localhost:3000/browser-test.html)
+
+### Expected Output
+Click the red **Run Client Tests** button. A log interface will appear sequentially verifying:
+1. InnerTube Configuration Extraction
+2. Search API (`rick roll`)
+3. Video Fetch API (`dQw4w9WgXcQ`)
+4. Playlist Fetch API (`PLE0hg-LdSfycrpTtMImPSqFLle4yYNzWD`)
+
+All lines should show a green `✅` indicating successful client-side parsing without Node-specific dependencies.
