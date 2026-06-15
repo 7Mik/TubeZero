@@ -80,7 +80,7 @@ async function runBenchmark() {
         if (yiVideo && yiVideo.comments && typeof yiVideo.comments.next === 'function') {
              // youtubei next(1) means 1 continuation (which is typically ~20 items)
              const firstPage = await yiVideo.comments.next(1);
-             yiComments = firstPage || [];
+             yiComments = yiVideo.comments.items || [];
         }
         const endYi = performance.now();
 
@@ -125,9 +125,16 @@ async function runBenchmark() {
         };
         console.log(`[tubezero] subtitles: ${results.subtitles.speeds.tubezero.toFixed(2)}ms (Count: ${tzSubs.length})`);
         
-        results.subtitles.speeds.youtubei = 0;
-        results.subtitles.samples.youtubei = "Feature not supported natively by suspiciouslookingowl/youtubei on video object.";
-        console.log(`[youtubei] subtitles: Unsupported natively`);
+        const startYi = performance.now();
+        const yiSubs = await yiClient.getVideoTranscript(videoId);
+        const endYi = performance.now();
+
+        results.subtitles.speeds.youtubei = endYi - startYi;
+        results.subtitles.samples.youtubei = {
+            fetchedCount: Array.isArray(yiSubs) ? yiSubs.length : (yiSubs?.items?.length || (yiSubs ? 1 : 0)),
+            firstSubtitleSample: Array.isArray(yiSubs) ? yiSubs[0] : (yiSubs?.items?.[0] || yiSubs || null)
+        };
+        console.log(`[youtubei] subtitles: ${results.subtitles.speeds.youtubei.toFixed(2)}ms (Count: ${results.subtitles.samples.youtubei.fetchedCount})`);
     } catch (e) {
         console.error('Error fetching subtitles:', e);
     }
@@ -153,7 +160,7 @@ async function runBenchmark() {
         },
         'Subtitles Time (ms)': {
             tubezero: results.subtitles.speeds.tubezero?.toFixed(2),
-            youtubei: 'N/A',
+            youtubei: results.subtitles.speeds.youtubei?.toFixed(2),
         }
     });
 }

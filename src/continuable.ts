@@ -11,6 +11,12 @@ export abstract class Continuable<T> extends Base {
         const newItems: T[] = [];
 
         if (count === undefined) {
+            if (this.iteratorIndex < this.items.length) {
+                const unread = this.items.slice(this.iteratorIndex);
+                this.iteratorIndex = this.items.length;
+                return unread;
+            }
+
             if (this.continuation === null) {
                 return [];
             }
@@ -32,8 +38,8 @@ export abstract class Continuable<T> extends Base {
                 }
 
                 const result = await this.fetch();
-                if (result.items.length === 0 && !result.continuation) {
-                    this.continuation = null;
+                if (result.items.length === 0) {
+                    this.continuation = result.continuation ?? null;
                     break;
                 }
 
