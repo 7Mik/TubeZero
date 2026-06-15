@@ -31,7 +31,7 @@ export class BaseVideo extends Base {
         const videoDetails = data.videoDetails || data.microformat?.playerMicroformatRenderer || {};
         
         this.id = videoDetails.videoId || '';
-        this.title = videoDetails.title?.simpleText || videoDetails.title?.runs?.[0]?.text || typeof videoDetails.title === 'string' ? videoDetails.title : '';
+        this.title = typeof videoDetails.title === 'string' ? videoDetails.title : (videoDetails.title?.simpleText || videoDetails.title?.runs?.[0]?.text || '');
         this.description = videoDetails.shortDescription || videoDetails.description?.simpleText || videoDetails.description?.runs?.map((r: any) => r.text).join('') || '';
         this.thumbnails = new Thumbnails(videoDetails.thumbnail?.thumbnails || []);
         this.viewCount = videoDetails.viewCount ? parseInt(videoDetails.viewCount, 10) : null;

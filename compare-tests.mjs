@@ -18,7 +18,7 @@ async function runComparisons() {
     
     console.log(`YouTubei Search items count: ${yiSearch.items.length}`);
     console.log(`TubeVanilla Search items count: ${tvSearch.items.length}`);
-    if (tvSearch.items.length > 0) {
+    if (tvSearch.items.length > 0 && yiSearch.items.length > 0) {
         console.log(`TubeVanilla First Item:`, {
             title: tvSearch.items[0].title,
             id: tvSearch.items[0].id,

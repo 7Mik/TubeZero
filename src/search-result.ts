@@ -39,7 +39,7 @@ export class SearchResult extends Continuable<SearchItem> {
                 return;
             }
 
-            if (obj.videoRenderer || (obj.lockupViewModel && obj.lockupViewModel.contentType === "LOCKUP_CONTENT_TYPE_VIDEO")) {
+            if (obj.videoRenderer || (obj.lockupViewModel && obj.lockupViewModel.contentId && obj.lockupViewModel.contentType === "LOCKUP_CONTENT_TYPE_VIDEO")) {
                 items.push(new VideoCompact(client, obj.videoRenderer || obj));
                 return; // Stop traversing this branch
             }
@@ -54,8 +54,8 @@ export class SearchResult extends Continuable<SearchItem> {
 
             if (obj.continuationCommand && obj.continuationCommand.token) {
                 continuation = obj.continuationCommand.token;
-            } else if (obj.continuationItemRenderer && obj.continuationItemRenderer.continuationEndpoint) {
-                continuation = obj.continuationItemRenderer.continuationEndpoint.continuationCommand.token;
+            } else if (obj.continuationItemRenderer?.continuationEndpoint) {
+                continuation = obj.continuationItemRenderer.continuationEndpoint?.continuationCommand?.token || null;
             }
 
             for (const key of Object.keys(obj)) {

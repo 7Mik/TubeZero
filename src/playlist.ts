@@ -87,8 +87,10 @@ export class Playlist extends Base {
         if (header) {
             this.id = header.playlistId || '';
             this.title = header.title?.simpleText || header.title?.runs?.[0]?.text || '';
-            this.videoCount = parseInt(header.numVideosText?.runs?.[0]?.text?.replace(/[^0-9]/g, '') || '0', 10);
-            this.viewCount = parseInt(header.viewCountText?.simpleText?.replace(/[^0-9]/g, '') || '0', 10);
+            const numVideosRaw = header.numVideosText?.runs?.[0]?.text || header.numVideosText?.simpleText || '';
+            this.videoCount = parseInt(numVideosRaw.replace(/[^0-9]/g, '') || '0', 10);
+            const viewCountRaw = header.viewCountText?.simpleText || header.viewCountText?.runs?.[0]?.text || '';
+            this.viewCount = parseInt(viewCountRaw.replace(/[^0-9]/g, '') || '0', 10);
             
             const owner = header.ownerText?.runs?.[0];
             if (owner) {
@@ -98,6 +100,10 @@ export class Playlist extends Base {
                 };
             }
         } else if (pageHeader) {
+            // Extract playlist ID from the microformat or URL context
+            this.id = data.microformat?.microformatDataRenderer?.urlCanonical?.split('list=')?.[1]?.split('&')?.[0] 
+                || data.responseContext?.serviceTrackingParams?.find((p: any) => p.params?.find((pp: any) => pp.key === 'browse_id'))?.params?.find((pp: any) => pp.key === 'browse_id')?.value?.replace('VL', '')
+                || '';
             this.title = pageHeader.title?.dynamicTextViewModel?.text?.content || '';
             
             const rows = pageHeader.metadata?.contentMetadataViewModel?.metadataRows || [];

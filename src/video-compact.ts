@@ -79,6 +79,7 @@ export class VideoCompact extends Base {
                 for (const part of row.metadataParts || []) {
                     const text = part.text?.content || '';
                     if (text.includes('views') || text.includes('watching')) {
+                        if (text.includes('watching')) isLive = true;
                         vCount = this.parseViewCount(text);
                     } else if (text.includes('ago')) {
                         pAt = text;
@@ -106,14 +107,22 @@ export class VideoCompact extends Base {
 
     private parseDuration(text: string): number {
         const parts = text.split(':').map(Number);
+        if (parts.some(isNaN)) return 0;
         if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
         if (parts.length === 2) return parts[0] * 60 + parts[1];
         return parts[0] || 0;
     }
 
     private parseViewCount(text: string): number | null {
-        const cleaned = text.replace(/[^0-9]/g, '');
-        if (!cleaned) return null;
-        return parseInt(cleaned, 10);
+        const cleaned = text.trim().replace(/,/g, '');
+        const match = cleaned.match(/([\d.]+)\s*([KMB])?/i);
+        if (!match) return null;
+        const num = parseFloat(match[1]);
+        if (isNaN(num)) return null;
+        const suffix = match[2]?.toUpperCase();
+        if (suffix === 'K') return Math.round(num * 1000);
+        if (suffix === 'M') return Math.round(num * 1000000);
+        if (suffix === 'B') return Math.round(num * 1000000000);
+        return Math.round(num) || null;
     }
 }

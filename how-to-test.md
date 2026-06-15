@@ -53,6 +53,8 @@ The script will execute queries sequentially on both libraries and print the exe
 
 TubeVanilla is designed primarily for client-side environments (Manifest V3 extensions, SPAs). We provide an HTML test harness that imports the compiled module (`dist/index.js`) to ensure it executes securely without violating modern CSP constraints or causing CORS issues.
 
+> **Note:** When running in a standard browser context (e.g., localhost), YouTube API calls will be blocked by CORS. This test harness is primarily intended for use within browser extension contexts (where extensions have host permissions to bypass CORS) or environments with a CORS proxy configured. The module import and client initialization will work on localhost, but API calls to YouTube will fail unless CORS is bypassed.
+
 ### How to Run
 Since the file loads an ES Module, it must be run through a local HTTP server (simply opening the file via `file://` will cause CORS restrictions on the module import).
 

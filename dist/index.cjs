@@ -546,6 +546,7 @@ var VideoCompact = class extends Base {
         for (const part of row.metadataParts || []) {
           const text = part.text?.content || "";
           if (text.includes("views") || text.includes("watching")) {
+            if (text.includes("watching")) isLive = true;
             vCount = this.parseViewCount(text);
           } else if (text.includes("ago")) {
             pAt = text;
@@ -571,14 +572,22 @@ var VideoCompact = class extends Base {
   }
   parseDuration(text) {
     const parts = text.split(":").map(Number);
+    if (parts.some(isNaN)) return 0;
     if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
     if (parts.length === 2) return parts[0] * 60 + parts[1];
     return parts[0] || 0;
   }
   parseViewCount(text) {
-    const cleaned = text.replace(/[^0-9]/g, "");
-    if (!cleaned) return null;
-    return parseInt(cleaned, 10);
+    const cleaned = text.trim().replace(/,/g, "");
+    const match = cleaned.match(/([\d.]+)\s*([KMB])?/i);
+    if (!match) return null;
+    const num = parseFloat(match[1]);
+    if (isNaN(num)) return null;
+    const suffix = match[2]?.toUpperCase();
+    if (suffix === "K") return Math.round(num * 1e3);
+    if (suffix === "M") return Math.round(num * 1e6);
+    if (suffix === "B") return Math.round(num * 1e9);
+    return Math.round(num) || null;
   }
 };
 
@@ -601,7 +610,8 @@ var PlaylistCompact = class extends Base {
       titleText = data.title?.simpleText || data.title?.runs?.[0]?.text || "";
       thumbnails = data.thumbnails?.[0]?.thumbnails || data.thumbnail?.thumbnails || [];
       if (data.videoCount) {
-        videoCountNum = parseInt(data.videoCount, 10);
+        const parsed = parseInt(data.videoCount, 10);
+        videoCountNum = isNaN(parsed) ? null : parsed;
       } else if (data.videoCountText) {
         const text = data.videoCountText.runs?.[0]?.text || data.videoCountText.simpleText || "";
         const cleaned = text.replace(/[^0-9]/g, "");
@@ -679,7 +689,7 @@ var SearchResult = class _SearchResult extends Continuable {
         for (const item of obj) traverse(item);
         return;
       }
-      if (obj.videoRenderer || obj.lockupViewModel && obj.lockupViewModel.contentType === "LOCKUP_CONTENT_TYPE_VIDEO") {
+      if (obj.videoRenderer || obj.lockupViewModel && obj.lockupViewModel.contentId && obj.lockupViewModel.contentType === "LOCKUP_CONTENT_TYPE_VIDEO") {
         items.push(new VideoCompact(client, obj.videoRenderer || obj));
         return;
       }
@@ -693,8 +703,8 @@ var SearchResult = class _SearchResult extends Continuable {
       }
       if (obj.continuationCommand && obj.continuationCommand.token) {
         continuation = obj.continuationCommand.token;
-      } else if (obj.continuationItemRenderer && obj.continuationItemRenderer.continuationEndpoint) {
-        continuation = obj.continuationItemRenderer.continuationEndpoint.continuationCommand.token;
+      } else if (obj.continuationItemRenderer?.continuationEndpoint) {
+        continuation = obj.continuationItemRenderer.continuationEndpoint?.continuationCommand?.token || null;
       }
       for (const key of Object.keys(obj)) {
         traverse(obj[key]);
@@ -729,7 +739,7 @@ var BaseVideo = class extends Base {
   parse(data) {
     const videoDetails = data.videoDetails || data.microformat?.playerMicroformatRenderer || {};
     this.id = videoDetails.videoId || "";
-    this.title = videoDetails.title?.simpleText || videoDetails.title?.runs?.[0]?.text || typeof videoDetails.title === "string" ? videoDetails.title : "";
+    this.title = typeof videoDetails.title === "string" ? videoDetails.title : videoDetails.title?.simpleText || videoDetails.title?.runs?.[0]?.text || "";
     this.description = videoDetails.shortDescription || videoDetails.description?.simpleText || videoDetails.description?.runs?.map((r) => r.text).join("") || "";
     this.thumbnails = new Thumbnails(videoDetails.thumbnail?.thumbnails || []);
     this.viewCount = videoDetails.viewCount ? parseInt(videoDetails.viewCount, 10) : null;
@@ -817,8 +827,10 @@ var Playlist = class extends Base {
     if (header) {
       this.id = header.playlistId || "";
       this.title = header.title?.simpleText || header.title?.runs?.[0]?.text || "";
-      this.videoCount = parseInt(header.numVideosText?.runs?.[0]?.text?.replace(/[^0-9]/g, "") || "0", 10);
-      this.viewCount = parseInt(header.viewCountText?.simpleText?.replace(/[^0-9]/g, "") || "0", 10);
+      const numVideosRaw = header.numVideosText?.runs?.[0]?.text || header.numVideosText?.simpleText || "";
+      this.videoCount = parseInt(numVideosRaw.replace(/[^0-9]/g, "") || "0", 10);
+      const viewCountRaw = header.viewCountText?.simpleText || header.viewCountText?.runs?.[0]?.text || "";
+      this.viewCount = parseInt(viewCountRaw.replace(/[^0-9]/g, "") || "0", 10);
       const owner = header.ownerText?.runs?.[0];
       if (owner) {
         this.channel = {
@@ -827,6 +839,7 @@ var Playlist = class extends Base {
         };
       }
     } else if (pageHeader) {
+      this.id = data.microformat?.microformatDataRenderer?.urlCanonical?.split("list=")?.[1]?.split("&")?.[0] || data.responseContext?.serviceTrackingParams?.find((p) => p.params?.find((pp) => pp.key === "browse_id"))?.params?.find((pp) => pp.key === "browse_id")?.value?.replace("VL", "") || "";
       this.title = pageHeader.title?.dynamicTextViewModel?.text?.content || "";
       const rows = pageHeader.metadata?.contentMetadataViewModel?.metadataRows || [];
       for (const row of rows) {

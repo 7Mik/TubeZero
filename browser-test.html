@@ -35,6 +35,7 @@
 
         document.getElementById('runTestsBtn').addEventListener('click', async () => {
             logOutput.innerHTML = '';
+            let allPassed = true;
             log("🚀 Starting TubeVanilla Browser Tests...\n");
             
             try {
@@ -55,6 +56,7 @@
                     log(`✅ Search OK! Found ${searchRes.items.length} items.`, 'success');
                     log(`   First result: ${first.title} by ${first.channel?.name}`, 'success');
                 } else {
+                    allPassed = false;
                     log(`❌ Search failed: No items found.`, 'error');
                 }
 
@@ -63,6 +65,7 @@
                 if (videoRes.title) {
                     log(`✅ Video OK! Title: ${videoRes.title} | Views: ${videoRes.viewCount}`, 'success');
                 } else {
+                    allPassed = false;
                     log(`❌ Video failed: Title missing.`, 'error');
                 }
 
@@ -71,12 +74,18 @@
                 if (plRes.title) {
                     log(`✅ Playlist OK! Title: ${plRes.title} | Videos: ${plRes.videoCount}`, 'success');
                 } else {
+                    allPassed = false;
                     log(`❌ Playlist failed.`, 'error');
                 }
 
-                log("\n🎉 All tests executed successfully!", 'success');
+                if (allPassed) {
+                    log("\n🎉 All tests executed successfully!", 'success');
+                } else {
+                    log("\n⚠️ Some tests failed — check the log above.", 'error');
+                }
 
             } catch (err) {
+                allPassed = false;
                 log(`\n❌ Caught Error: ${err.message}`, 'error');
                 console.error(err);
             }

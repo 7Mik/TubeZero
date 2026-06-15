@@ -25,7 +25,8 @@ export class PlaylistCompact extends Base {
             thumbnails = data.thumbnails?.[0]?.thumbnails || data.thumbnail?.thumbnails || [];
             
             if (data.videoCount) {
-                videoCountNum = parseInt(data.videoCount, 10);
+                const parsed = parseInt(data.videoCount, 10);
+                videoCountNum = isNaN(parsed) ? null : parsed;
             } else if (data.videoCountText) {
                 const text = data.videoCountText.runs?.[0]?.text || data.videoCountText.simpleText || '';
                 const cleaned = text.replace(/[^0-9]/g, '');
