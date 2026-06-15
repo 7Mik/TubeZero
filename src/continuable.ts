@@ -26,6 +26,7 @@ export abstract class Continuable<T> extends Base {
             newItems.push(...result.items);
             this.iteratorIndex = this.items.length;
         } else {
+            let emptyPageCount = 0;
             while (newItems.length < count) {
                 if (this.iteratorIndex < this.items.length) {
                     const take = Math.min(count - newItems.length, this.items.length - this.iteratorIndex);
@@ -41,8 +42,13 @@ export abstract class Continuable<T> extends Base {
                 this.items.push(...result.items);
                 this.continuation = result.continuation ?? null;
 
-                if (result.items.length === 0 && this.continuation === null) {
-                    break;
+                if (result.items.length === 0) {
+                    emptyPageCount++;
+                    if (this.continuation === null || emptyPageCount >= 3) {
+                        break;
+                    }
+                } else {
+                    emptyPageCount = 0;
                 }
             }
         }
