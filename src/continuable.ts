@@ -3,6 +3,7 @@ import { Base } from './base.js';
 export abstract class Continuable<T> extends Base {
     public items: T[] = [];
     public continuation?: string | null = undefined;
+    private iteratorIndex: number = 0;
 
     protected abstract fetch(): Promise<{ items: T[]; continuation?: string | null }>;
 
@@ -10,31 +11,37 @@ export abstract class Continuable<T> extends Base {
         const newItems: T[] = [];
 
         if (count === undefined) {
-            if (this.items.length > 0 && (this.continuation === null || this.continuation === undefined)) {
+            if (this.continuation === null) {
                 return [];
             }
             const result = await this.fetch();
             this.items.push(...result.items);
             this.continuation = result.continuation ?? null;
             newItems.push(...result.items);
+            this.iteratorIndex = this.items.length;
         } else {
             while (newItems.length < count) {
-                if (this.items.length > 0 && (this.continuation === null || this.continuation === undefined)) {
+                if (this.iteratorIndex < this.items.length) {
+                    const take = Math.min(count - newItems.length, this.items.length - this.iteratorIndex);
+                    newItems.push(...this.items.slice(this.iteratorIndex, this.iteratorIndex + take));
+                    this.iteratorIndex += take;
+                }
+
+                if (newItems.length >= count || this.continuation === null) {
                     break;
                 }
 
                 const result = await this.fetch();
-                if (result.items.length === 0) {
-                    this.continuation = result.continuation ?? null;
+                if (result.items.length === 0 && !result.continuation) {
+                    this.continuation = null;
                     break;
                 }
 
                 this.items.push(...result.items);
                 this.continuation = result.continuation ?? null;
-                newItems.push(...result.items);
             }
         }
 
-        return count === undefined ? newItems : newItems.slice(0, count);
+        return newItems;
     }
 }
