@@ -126,7 +126,7 @@ async function runBenchmark() {
         console.log(`[tubezero] subtitles: ${results.subtitles.speeds.tubezero.toFixed(2)}ms (Count: ${tzSubs.length})`);
         
         const startYi = performance.now();
-        const yiSubs = await yiClient.getVideoTranscript(videoId);
+        const yiSubs = await yiClient.getVideoTranscript(videoId, 'en');
         const endYi = performance.now();
 
         results.subtitles.speeds.youtubei = endYi - startYi;

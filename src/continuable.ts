@@ -38,13 +38,12 @@ export abstract class Continuable<T> extends Base {
                 }
 
                 const result = await this.fetch();
-                if (result.items.length === 0) {
-                    this.continuation = result.continuation ?? null;
-                    break;
-                }
-
                 this.items.push(...result.items);
                 this.continuation = result.continuation ?? null;
+
+                if (result.items.length === 0 && this.continuation === null) {
+                    break;
+                }
             }
         }
 
