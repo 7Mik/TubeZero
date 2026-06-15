@@ -108,9 +108,9 @@ Before mapping the API, we must evaluate all features against **TubeVanilla's th
 * [x] Implement **`Thumbnail`** / **`Thumbnails`** handlers.
 
 ### 🏃 Sprint 2: Video, Channel, & Playlist Foundations (Target: Week 2)
-* [ ] Implement search parsing into **`SearchResult`** using **static base64 filter strings** instead of dynamic Protobuf builders.
-* [ ] Implement **`Client.getVideo()`** returning **`Video`** (without deciphering signatures).
-* [ ] Implement **`Client.getPlaylist()`** returning **`Playlist`** with **`PlaylistVideos`**.
+* [x] Implement search parsing into **`SearchResult`** using **static base64 filter strings** instead of dynamic Protobuf builders.
+* [x] Implement **`Client.getVideo()`** returning **`Video`** (without deciphering signatures).
+* [x] Implement **`Client.getPlaylist()`** returning **`Playlist`** with **`PlaylistVideos`**.
 
 ### 🏃 Sprint 3: Comments, Captions, and Watch-Next (Target: Week 3)
 * [ ] Implement watch page connections: **`VideoRelated`** and **`VideoCaptions`**.
