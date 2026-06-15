@@ -355,6 +355,468 @@ async function scrapeTasteData(injectedConfig, customPlaylists = [], limit = 500
   };
 }
 
+// src/base.ts
+var Base = class {
+  constructor(client) {
+    this.client = client;
+  }
+  client;
+};
+
+// src/continuable.ts
+var Continuable = class extends Base {
+  items = [];
+  continuation = void 0;
+  iteratorIndex = 0;
+  async next(count) {
+    const newItems = [];
+    if (count === void 0) {
+      if (this.iteratorIndex < this.items.length) {
+        const unread = this.items.slice(this.iteratorIndex);
+        this.iteratorIndex = this.items.length;
+        return unread;
+      }
+      if (this.continuation === null) {
+        return [];
+      }
+      const result = await this.fetch();
+      this.items.push(...result.items);
+      this.continuation = result.continuation ?? null;
+      newItems.push(...result.items);
+      this.iteratorIndex = this.items.length;
+    } else {
+      let emptyPageCount = 0;
+      while (newItems.length < count) {
+        if (this.iteratorIndex < this.items.length) {
+          const take = Math.min(count - newItems.length, this.items.length - this.iteratorIndex);
+          newItems.push(...this.items.slice(this.iteratorIndex, this.iteratorIndex + take));
+          this.iteratorIndex += take;
+        }
+        if (newItems.length >= count || this.continuation === null) {
+          break;
+        }
+        const result = await this.fetch();
+        this.items.push(...result.items);
+        this.continuation = result.continuation ?? null;
+        if (result.items.length === 0) {
+          emptyPageCount++;
+          if (this.continuation === null || emptyPageCount >= 3) {
+            break;
+          }
+        } else {
+          emptyPageCount = 0;
+        }
+      }
+    }
+    return newItems;
+  }
+};
+
+// src/thumbnails.ts
+var Thumbnails = class {
+  list;
+  constructor(list) {
+    this.list = list;
+  }
+  getBestResolution() {
+    if (!this.list || this.list.length === 0) {
+      return void 0;
+    }
+    let best = this.list[0];
+    let maxResolution = (best.width || 0) * (best.height || 0);
+    for (let i = 1; i < this.list.length; i++) {
+      const thumb = this.list[i];
+      const resolution = (thumb.width || 0) * (thumb.height || 0);
+      if (resolution > maxResolution) {
+        maxResolution = resolution;
+        best = thumb;
+      }
+    }
+    return best;
+  }
+};
+
+// src/video-compact.ts
+var VideoCompact = class extends Base {
+  id;
+  title;
+  thumbnails;
+  duration;
+  isLive;
+  channel;
+  viewCount;
+  publishedAt;
+  constructor(client, data) {
+    super(client);
+    let videoId = "";
+    let titleText = "";
+    let durationSec = null;
+    let isLive = false;
+    let viewCountNum = null;
+    let pubAt = null;
+    let thumbnails = [];
+    let channelObj = void 0;
+    if (data.videoId) {
+      videoId = data.videoId;
+      titleText = data.title?.simpleText || data.title?.runs?.[0]?.text || "";
+      thumbnails = data.thumbnail?.thumbnails || [];
+      if (data.lengthText) {
+        const text = data.lengthText.simpleText || data.lengthText.runs?.[0]?.text || "";
+        durationSec = this.parseDuration(text);
+      }
+      if (data.badges?.some((b) => b.metadataBadgeRenderer?.style === "BADGE_STYLE_TYPE_LIVE_NOW")) {
+        isLive = true;
+      }
+      if (data.viewCountText) {
+        const text = data.viewCountText.simpleText || data.viewCountText.runs?.[0]?.text || "";
+        viewCountNum = this.parseViewCount(text);
+      }
+      if (data.publishedTimeText) {
+        pubAt = data.publishedTimeText.simpleText || data.publishedTimeText.runs?.[0]?.text || null;
+      }
+      const byline = data.shortBylineText || data.longBylineText || data.ownerText;
+      if (byline && byline.runs && byline.runs[0]) {
+        const run = byline.runs[0];
+        channelObj = {
+          id: run.navigationEndpoint?.browseEndpoint?.browseId || void 0,
+          name: run.text,
+          thumbnails: data.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.thumbnail?.thumbnails ? new Thumbnails(data.channelThumbnailSupportedRenderers.channelThumbnailWithLinkRenderer.thumbnail.thumbnails) : void 0
+        };
+      }
+    } else if (data.lockupViewModel && data.lockupViewModel.contentId && data.lockupViewModel.contentType === "LOCKUP_CONTENT_TYPE_VIDEO") {
+      const model = data.lockupViewModel;
+      videoId = model.contentId;
+      const meta = model.metadata?.lockupMetadataViewModel;
+      titleText = meta?.title?.content || "";
+      const rows = meta?.metadata?.contentMetadataViewModel?.metadataRows || [];
+      let cName = "";
+      let vCount = null;
+      let pAt = null;
+      for (const row of rows) {
+        for (const part of row.metadataParts || []) {
+          const text = part.text?.content || "";
+          if (text.includes("views") || text.includes("watching")) {
+            if (text.includes("watching")) isLive = true;
+            vCount = this.parseViewCount(text);
+          } else if (text.includes("ago")) {
+            pAt = text;
+          } else {
+            cName = text;
+          }
+        }
+      }
+      if (cName) {
+        channelObj = { name: cName.replace(/•/g, "").trim() };
+      }
+      viewCountNum = vCount;
+      pubAt = pAt;
+    }
+    this.id = videoId;
+    this.title = titleText;
+    this.thumbnails = new Thumbnails(thumbnails);
+    this.duration = durationSec;
+    this.isLive = isLive;
+    this.channel = channelObj;
+    this.viewCount = viewCountNum;
+    this.publishedAt = pubAt;
+  }
+  parseDuration(text) {
+    const parts = text.split(":").map(Number);
+    if (parts.some(isNaN)) return 0;
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return parts[0] || 0;
+  }
+  parseViewCount(text) {
+    const cleaned = text.trim().replace(/,/g, "");
+    const match = cleaned.match(/([\d.]+)\s*([KMB])?/i);
+    if (!match) return null;
+    const num = parseFloat(match[1]);
+    if (isNaN(num)) return null;
+    const suffix = match[2]?.toUpperCase();
+    if (suffix === "K") return Math.round(num * 1e3);
+    if (suffix === "M") return Math.round(num * 1e6);
+    if (suffix === "B") return Math.round(num * 1e9);
+    const result = Math.round(num);
+    return isNaN(result) ? null : result;
+  }
+};
+
+// src/playlist-compact.ts
+var PlaylistCompact = class extends Base {
+  id;
+  title;
+  thumbnails;
+  videoCount;
+  channel;
+  constructor(client, data) {
+    super(client);
+    let playlistId = "";
+    let titleText = "";
+    let thumbnails = [];
+    let videoCountNum = null;
+    let channelObj = void 0;
+    if (data.playlistId) {
+      playlistId = data.playlistId;
+      titleText = data.title?.simpleText || data.title?.runs?.[0]?.text || "";
+      thumbnails = data.thumbnails?.[0]?.thumbnails || data.thumbnail?.thumbnails || [];
+      if (data.videoCount) {
+        const parsed = parseInt(data.videoCount, 10);
+        videoCountNum = isNaN(parsed) ? null : parsed;
+      } else if (data.videoCountText) {
+        const text = data.videoCountText.runs?.[0]?.text || data.videoCountText.simpleText || "";
+        const cleaned = text.replace(/[^0-9]/g, "");
+        if (cleaned) videoCountNum = parseInt(cleaned, 10);
+      }
+      const byline = data.shortBylineText || data.longBylineText || data.ownerText;
+      if (byline && byline.runs && byline.runs[0]) {
+        const run = byline.runs[0];
+        channelObj = {
+          id: run.navigationEndpoint?.browseEndpoint?.browseId || void 0,
+          name: run.text
+        };
+      }
+    }
+    this.id = playlistId;
+    this.title = titleText;
+    this.thumbnails = new Thumbnails(thumbnails);
+    this.videoCount = videoCountNum;
+    this.channel = channelObj;
+  }
+};
+
+// src/channel-compact.ts
+var ChannelCompact = class extends Base {
+  id;
+  name;
+  thumbnails;
+  subscriberCount;
+  constructor(client, data) {
+    super(client);
+    let channelId = "";
+    let nameText = "";
+    let thumbnails = [];
+    let subCount = null;
+    if (data.channelId) {
+      channelId = data.channelId;
+      nameText = data.title?.simpleText || data.title?.runs?.[0]?.text || "";
+      thumbnails = data.thumbnail?.thumbnails || [];
+      if (data.subscriberCountText) {
+        subCount = data.subscriberCountText.simpleText || data.subscriberCountText.runs?.[0]?.text || null;
+      } else if (data.videoSubscriberCountText) {
+        subCount = data.videoSubscriberCountText.simpleText || data.videoSubscriberCountText.runs?.[0]?.text || null;
+      }
+    }
+    this.id = channelId;
+    this.name = nameText;
+    this.thumbnails = new Thumbnails(thumbnails);
+    this.subscriberCount = subCount;
+  }
+};
+
+// src/search-result.ts
+var SearchResult = class _SearchResult extends Continuable {
+  constructor(client, initialData) {
+    super(client);
+    const { items, continuation } = _SearchResult.parseData(client, initialData);
+    this.items = items;
+    this.continuation = continuation;
+  }
+  async fetch() {
+    if (!this.continuation) {
+      return { items: [], continuation: null };
+    }
+    const data = await this.client.request("search", {
+      continuation: this.continuation
+    });
+    return _SearchResult.parseData(this.client, data);
+  }
+  static parseData(client, data) {
+    const items = [];
+    let continuation = null;
+    function traverse(obj) {
+      if (!obj || typeof obj !== "object") return;
+      if (Array.isArray(obj)) {
+        for (const item of obj) traverse(item);
+        return;
+      }
+      if (obj.videoRenderer || obj.lockupViewModel && obj.lockupViewModel.contentId && obj.lockupViewModel.contentType === "LOCKUP_CONTENT_TYPE_VIDEO") {
+        items.push(new VideoCompact(client, obj.videoRenderer || obj));
+        return;
+      }
+      if (obj.playlistRenderer) {
+        items.push(new PlaylistCompact(client, obj.playlistRenderer));
+        return;
+      }
+      if (obj.channelRenderer) {
+        items.push(new ChannelCompact(client, obj.channelRenderer));
+        return;
+      }
+      if (obj.continuationCommand && obj.continuationCommand.token) {
+        continuation = obj.continuationCommand.token;
+      } else if (obj.continuationItemRenderer?.continuationEndpoint) {
+        continuation = obj.continuationItemRenderer.continuationEndpoint?.continuationCommand?.token || null;
+      }
+      for (const key of Object.keys(obj)) {
+        traverse(obj[key]);
+      }
+    }
+    traverse(data);
+    return { items, continuation };
+  }
+};
+
+// src/base-video.ts
+var BaseVideo = class extends Base {
+  id;
+  title;
+  description;
+  thumbnails;
+  viewCount;
+  publishDate;
+  channel;
+  isLive;
+  constructor(client, data) {
+    super(client);
+    this.id = "";
+    this.title = "";
+    this.description = "";
+    this.thumbnails = new Thumbnails([]);
+    this.viewCount = null;
+    this.publishDate = null;
+    this.isLive = false;
+    this.parse(data);
+  }
+  parse(data) {
+    const videoDetails = data.videoDetails || data.microformat?.playerMicroformatRenderer || {};
+    this.id = videoDetails.videoId || "";
+    this.title = typeof videoDetails.title === "string" ? videoDetails.title : videoDetails.title?.simpleText || videoDetails.title?.runs?.[0]?.text || "";
+    this.description = videoDetails.shortDescription || videoDetails.description?.simpleText || videoDetails.description?.runs?.map((r) => r.text).join("") || "";
+    this.thumbnails = new Thumbnails(videoDetails.thumbnail?.thumbnails || []);
+    this.viewCount = videoDetails.viewCount ? parseInt(videoDetails.viewCount, 10) : null;
+    this.isLive = videoDetails.isLiveContent || false;
+    this.publishDate = videoDetails.publishDate || null;
+    this.channel = {
+      name: videoDetails.author || videoDetails.ownerChannelName || "",
+      id: videoDetails.channelId || videoDetails.externalChannelId || ""
+    };
+  }
+};
+
+// src/video.ts
+var Video = class extends BaseVideo {
+  // We will expand this with related videos, comments pagination, and chapters in Sprints 3 & 4.
+  constructor(client, data) {
+    super(client, data);
+  }
+};
+
+// src/playlist.ts
+var PlaylistVideos = class _PlaylistVideos extends Continuable {
+  constructor(client, initialData) {
+    super(client);
+    const { items, continuation } = _PlaylistVideos.parseData(client, initialData);
+    this.items = items;
+    this.continuation = continuation;
+  }
+  async fetch() {
+    if (!this.continuation) {
+      return { items: [], continuation: null };
+    }
+    const data = await this.client.request("browse", {
+      continuation: this.continuation
+    });
+    return _PlaylistVideos.parseData(this.client, data);
+  }
+  static parseData(client, data) {
+    const items = [];
+    let continuation = null;
+    function traverse(obj) {
+      if (!obj || typeof obj !== "object") return;
+      if (Array.isArray(obj)) {
+        for (const item of obj) traverse(item);
+        return;
+      }
+      if (obj.playlistVideoRenderer) {
+        items.push(new VideoCompact(client, obj.playlistVideoRenderer));
+        return;
+      }
+      if (obj.continuationCommand && obj.continuationCommand.token) {
+        continuation = obj.continuationCommand.token;
+      } else if (obj.continuationItemRenderer && obj.continuationItemRenderer.continuationEndpoint) {
+        continuation = obj.continuationItemRenderer.continuationEndpoint.continuationCommand.token;
+      }
+      for (const key of Object.keys(obj)) {
+        traverse(obj[key]);
+      }
+    }
+    traverse(data);
+    return { items, continuation };
+  }
+};
+var Playlist = class extends Base {
+  id;
+  title;
+  videoCount;
+  viewCount;
+  lastUpdated;
+  channel;
+  videos;
+  constructor(client, data) {
+    super(client);
+    this.id = "";
+    this.title = "";
+    this.videoCount = 0;
+    this.viewCount = 0;
+    this.lastUpdated = "";
+    this.parse(data);
+    this.videos = new PlaylistVideos(client, data);
+  }
+  parse(data) {
+    let header = data.header?.playlistHeaderRenderer;
+    let pageHeader = data.header?.pageHeaderRenderer?.content?.pageHeaderViewModel;
+    if (header) {
+      this.id = header.playlistId || "";
+      this.title = header.title?.simpleText || header.title?.runs?.[0]?.text || "";
+      const numVideosRaw = header.numVideosText?.runs?.[0]?.text || header.numVideosText?.simpleText || "";
+      this.videoCount = parseInt(numVideosRaw.replace(/[^0-9]/g, "") || "0", 10);
+      const viewCountRaw = header.viewCountText?.simpleText || header.viewCountText?.runs?.[0]?.text || "";
+      this.viewCount = parseInt(viewCountRaw.replace(/[^0-9]/g, "") || "0", 10);
+      const owner = header.ownerText?.runs?.[0];
+      if (owner) {
+        this.channel = {
+          id: owner.navigationEndpoint?.browseEndpoint?.browseId || void 0,
+          name: owner.text
+        };
+      }
+    } else if (pageHeader) {
+      this.id = data.microformat?.microformatDataRenderer?.urlCanonical?.split("list=")?.[1]?.split("&")?.[0] || data.responseContext?.serviceTrackingParams?.find((p) => p.params?.find((pp) => pp.key === "browse_id"))?.params?.find((pp) => pp.key === "browse_id")?.value?.replace("VL", "") || "";
+      this.title = pageHeader.title?.dynamicTextViewModel?.text?.content || "";
+      const rows = pageHeader.metadata?.contentMetadataViewModel?.metadataRows || [];
+      for (const row of rows) {
+        for (const part of row.metadataParts || []) {
+          if (part.avatarStack?.avatarStackViewModel?.text?.content) {
+            const rawName = part.avatarStack.avatarStackViewModel.text.content;
+            this.channel = { name: rawName.replace(/^by\s+/i, "").trim() };
+            const runs = part.avatarStack.avatarStackViewModel.text.commandRuns || [];
+            if (runs[0]?.onTap?.innertubeCommand?.browseEndpoint?.browseId) {
+              this.channel.id = runs[0].onTap.innertubeCommand.browseEndpoint.browseId;
+            }
+          }
+          if (part.text?.content) {
+            const text = part.text.content;
+            if (text.includes("video")) {
+              this.videoCount = parseInt(text.replace(/[^0-9]/g, "") || "0", 10);
+            } else if (text.includes("view")) {
+              this.viewCount = parseInt(text.replace(/[^0-9]/g, "") || "0", 10);
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
 // src/client.ts
 function getFallbackClientVersion2() {
   const d = /* @__PURE__ */ new Date();
@@ -387,7 +849,7 @@ var Client = class {
   idToken = null;
   cookie = "";
   constructor(options = {}) {
-    this.cookie = options.cookie !== void 0 ? options.cookie : typeof document !== "undefined" ? document.cookie : "";
+    this.cookie = options.cookie !== void 0 ? options.cookie : "";
     let resolvedApiKey = options.apiKey !== void 0 ? options.apiKey : null;
     let resolvedClientVersion = options.clientVersion !== void 0 ? options.clientVersion : null;
     let resolvedIdToken = options.idToken !== void 0 ? options.idToken : null;
@@ -427,6 +889,9 @@ var Client = class {
    */
   async request(endpoint, payload) {
     await this.ensureConfig();
+    if (!this.apiKey) {
+      throw new Error("[Client] InnerTube API key is not configured.");
+    }
     const cleanEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
     const url = `https://www.youtube.com/youtubei/v1/${cleanEndpoint}?key=${this.apiKey}&prettyPrint=false`;
     const headers = {
@@ -448,7 +913,7 @@ var Client = class {
         }
       }
     }
-    const bodyPayload = payload || {};
+    const bodyPayload = payload && typeof payload === "object" ? payload : {};
     const requestBody = {
       ...bodyPayload,
       context: {
@@ -472,6 +937,40 @@ var Client = class {
       throw new Error(`InnerTube request failed with status: ${response.status}`);
     }
     return response.json();
+  }
+  /**
+   * Searches YouTube for the given query.
+   */
+  async search(query, options) {
+    const payload = { query };
+    if (options?.type === "video") {
+      payload.params = "EgIQAQ%3D%3D";
+    } else if (options?.type === "playlist") {
+      payload.params = "EgIQAw%3D%3D";
+    } else if (options?.type === "channel") {
+      payload.params = "EgIQAg%3D%3D";
+    }
+    const data = await this.request("search", payload);
+    return new SearchResult(this, data);
+  }
+  /**
+   * Gets metadata for a specific video.
+   */
+  async getVideo(videoId) {
+    const [playerData, nextData] = await Promise.all([
+      this.request("player", { videoId }),
+      this.request("next", { videoId })
+    ]);
+    const merged = { ...playerData, ...nextData };
+    return new Video(this, merged);
+  }
+  /**
+   * Gets metadata and videos for a specific playlist.
+   */
+  async getPlaylist(playlistId) {
+    const browseId = playlistId.startsWith("VL") ? playlistId : `VL${playlistId}`;
+    const data = await this.request("browse", { browseId });
+    return new Playlist(this, data);
   }
 };
 
@@ -831,73 +1330,19 @@ async function fetchSubtitlesFromYouTube(videoId, language = "en") {
     return [];
   }
 }
-
-// src/base.ts
-var Base = class {
-  constructor(client) {
-    this.client = client;
-  }
-  client;
-};
-
-// src/continuable.ts
-var Continuable = class extends Base {
-  items = [];
-  continuation = void 0;
-  async next(count) {
-    const newItems = [];
-    if (count === void 0) {
-      const result = await this.fetch();
-      this.items.push(...result.items);
-      this.continuation = result.continuation ?? null;
-      newItems.push(...result.items);
-    } else {
-      while (newItems.length < count) {
-        if (this.items.length > 0 && (this.continuation === null || this.continuation === void 0)) {
-          break;
-        }
-        const result = await this.fetch();
-        if (result.items.length === 0) {
-          this.continuation = result.continuation ?? null;
-          break;
-        }
-        this.items.push(...result.items);
-        this.continuation = result.continuation ?? null;
-        newItems.push(...result.items);
-      }
-    }
-    return newItems;
-  }
-};
-
-// src/thumbnails.ts
-var Thumbnails = class {
-  list;
-  constructor(list) {
-    this.list = list;
-  }
-  getBestResolution() {
-    if (!this.list || this.list.length === 0) {
-      return void 0;
-    }
-    let best = this.list[0];
-    let maxResolution = best.width * best.height;
-    for (let i = 1; i < this.list.length; i++) {
-      const thumb = this.list[i];
-      const resolution = thumb.width * thumb.height;
-      if (resolution > maxResolution) {
-        maxResolution = resolution;
-        best = thumb;
-      }
-    }
-    return best;
-  }
-};
 export {
   Base,
+  BaseVideo,
+  ChannelCompact,
   Client,
   Continuable,
+  Playlist,
+  PlaylistCompact,
+  PlaylistVideos,
+  SearchResult,
   Thumbnails,
+  Video,
+  VideoCompact,
   createCommentsApiRequestOptions,
   extractPlayerResponse,
   extractVideoEntries,

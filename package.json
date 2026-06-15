@@ -16,7 +16,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "dev": "tsup src/index.ts --format esm --watch",
-    "test": "node test.mjs"
+    "test": "node compare-tests.mjs"
   },
   "keywords": [
     "youtube",

@@ -84,11 +84,122 @@ declare function fetchInnerTubeFeed(apiKey: string, clientVersion: string, idTok
  */
 declare function scrapeTasteData(injectedConfig?: Partial<InnerTubeConfig> | null, customPlaylists?: CustomPlaylist[], limit?: number): Promise<TasteData>;
 
+declare class Base {
+    client: Client;
+    constructor(client: Client);
+}
+
+declare abstract class Continuable<T> extends Base {
+    items: T[];
+    continuation?: string | null;
+    private iteratorIndex;
+    protected abstract fetch(): Promise<{
+        items: T[];
+        continuation?: string | null;
+    }>;
+    next(count?: number): Promise<T[]>;
+}
+
+interface Thumbnail {
+    url: string;
+    width: number;
+    height: number;
+}
+declare class Thumbnails {
+    list: Thumbnail[];
+    constructor(list: Thumbnail[]);
+    getBestResolution(): Thumbnail | undefined;
+}
+
+interface ChannelInfo {
+    id?: string;
+    name: string;
+    thumbnails?: Thumbnails;
+}
+declare class VideoCompact extends Base {
+    id: string;
+    title: string;
+    thumbnails: Thumbnails;
+    duration: number | null;
+    isLive: boolean;
+    channel?: ChannelInfo;
+    viewCount: number | null;
+    publishedAt: string | null;
+    constructor(client: Client, data: any);
+    private parseDuration;
+    private parseViewCount;
+}
+
+declare class PlaylistCompact extends Base {
+    id: string;
+    title: string;
+    thumbnails: Thumbnails;
+    videoCount: number | null;
+    channel?: ChannelInfo;
+    constructor(client: Client, data: any);
+}
+
+declare class ChannelCompact extends Base {
+    id: string;
+    name: string;
+    thumbnails: Thumbnails;
+    subscriberCount: string | null;
+    constructor(client: Client, data: any);
+}
+
+type SearchItem = VideoCompact | PlaylistCompact | ChannelCompact;
+declare class SearchResult extends Continuable<SearchItem> {
+    constructor(client: Client, initialData: any);
+    protected fetch(): Promise<{
+        items: SearchItem[];
+        continuation?: string | null;
+    }>;
+    private static parseData;
+}
+
+declare class BaseVideo extends Base {
+    id: string;
+    title: string;
+    description: string;
+    thumbnails: Thumbnails;
+    viewCount: number | null;
+    publishDate: string | null;
+    channel?: ChannelInfo;
+    isLive: boolean;
+    constructor(client: Client, data: any);
+    protected parse(data: any): void;
+}
+
+declare class Video extends BaseVideo {
+    constructor(client: Client, data: any);
+}
+
+declare class PlaylistVideos extends Continuable<VideoCompact> {
+    constructor(client: Client, initialData: any);
+    protected fetch(): Promise<{
+        items: VideoCompact[];
+        continuation?: string | null;
+    }>;
+    private static parseData;
+}
+declare class Playlist extends Base {
+    id: string;
+    title: string;
+    videoCount: number;
+    viewCount: number;
+    lastUpdated: string;
+    channel?: ChannelInfo;
+    videos: PlaylistVideos;
+    constructor(client: Client, data: any);
+    private parse;
+}
+
 /**
  * client.ts
  * Core InnerTube Client class for TubeVanilla.
  * Optimized for client-side environments with zero external dependencies.
  */
+
 interface ClientOptions {
     apiKey?: string | null;
     clientVersion?: string;
@@ -110,6 +221,20 @@ declare class Client {
      * Dispatches an authenticated or unauthenticated POST request to the specified InnerTube endpoint.
      */
     request(endpoint: string, payload: any): Promise<any>;
+    /**
+     * Searches YouTube for the given query.
+     */
+    search(query: string, options?: {
+        type?: 'video' | 'playlist' | 'channel' | 'all';
+    }): Promise<SearchResult>;
+    /**
+     * Gets metadata for a specific video.
+     */
+    getVideo(videoId: string): Promise<Video>;
+    /**
+     * Gets metadata and videos for a specific playlist.
+     */
+    getPlaylist(playlistId: string): Promise<Playlist>;
 }
 
 /**
@@ -175,30 +300,4 @@ declare function parseXmlTranscriptRegex(xmlText: string): TranscriptSegment[];
  */
 declare function fetchSubtitlesFromYouTube(videoId: string, language?: string): Promise<TranscriptSegment[]>;
 
-declare class Base {
-    client: Client;
-    constructor(client: Client);
-}
-
-declare abstract class Continuable<T> extends Base {
-    items: T[];
-    continuation?: string | null;
-    protected abstract fetch(): Promise<{
-        items: T[];
-        continuation?: string | null;
-    }>;
-    next(count?: number): Promise<T[]>;
-}
-
-interface Thumbnail {
-    url: string;
-    width: number;
-    height: number;
-}
-declare class Thumbnails {
-    list: Thumbnail[];
-    constructor(list: Thumbnail[]);
-    getBestResolution(): Thumbnail | undefined;
-}
-
-export { Base, Client, type ClientOptions, type CommentEntry, type CommentsApiRequestOptions, Continuable, type CustomPlaylist, type CustomPlaylistData, type InnerTubeConfig, type TasteData, type Thumbnail, Thumbnails, type TranscriptSegment, type VideoEntry, createCommentsApiRequestOptions, extractPlayerResponse, extractVideoEntries, fetchCommentsFromYouTube, fetchInnerTubeFeed, fetchSubtitlesFromYouTube, fetchYtInitialData, findContinuationToken, getInnerTubeConfig, getSApiSidHash, getSapisidFromCookie, parseXmlTranscriptRegex, scrapeTasteData };
+export { Base, BaseVideo, ChannelCompact, type ChannelInfo, Client, type ClientOptions, type CommentEntry, type CommentsApiRequestOptions, Continuable, type CustomPlaylist, type CustomPlaylistData, type InnerTubeConfig, Playlist, PlaylistCompact, PlaylistVideos, type SearchItem, SearchResult, type TasteData, type Thumbnail, Thumbnails, type TranscriptSegment, Video, VideoCompact, type VideoEntry, createCommentsApiRequestOptions, extractPlayerResponse, extractVideoEntries, fetchCommentsFromYouTube, fetchInnerTubeFeed, fetchSubtitlesFromYouTube, fetchYtInitialData, findContinuationToken, getInnerTubeConfig, getSApiSidHash, getSapisidFromCookie, parseXmlTranscriptRegex, scrapeTasteData };

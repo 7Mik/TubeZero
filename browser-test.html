@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TubeVanilla Browser Test</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #111; color: #eee; padding: 20px; }
+        .log-container { background: #222; padding: 15px; border-radius: 8px; border: 1px solid #444; height: 500px; overflow-y: auto; font-family: monospace; white-space: pre-wrap; }
+        button { background: #f00; color: #fff; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        button:hover { background: #d00; }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+        .info { color: #60a5fa; }
+    </style>
+</head>
+<body>
+    <h1>TubeVanilla - In-Browser Test Suite</h1>
+    <p>This page loads the compiled ESM bundle (<code>dist/index.js</code>) natively and tests the client.</p>
+    <button id="runTestsBtn">Run Client Tests</button>
+    <br><br>
+    <div class="log-container" id="logOutput"></div>
+
+    <script type="module">
+        import { Client } from './dist/index.js';
+
+        const logOutput = document.getElementById('logOutput');
+        function log(message, type = 'info') {
+            const span = document.createElement('span');
+            span.className = type;
+            span.textContent = message + '\n';
+            logOutput.appendChild(span);
+            logOutput.scrollTop = logOutput.scrollHeight;
+        }
+
+        document.getElementById('runTestsBtn').addEventListener('click', async () => {
+            logOutput.innerHTML = '';
+            let allPassed = true;
+            log("🚀 Starting TubeVanilla Browser Tests...\n");
+            
+            try {
+                const client = new Client();
+                
+                log("1. Initializing Config...");
+                await client.ensureConfig();
+                if (client.apiKey) {
+                    log(`✅ Config OK! Client Version: ${client.clientVersion}`, 'success');
+                } else {
+                    log(`⚠️ Config warning: API Key missing.`, 'error');
+                }
+
+                log("\n2. Testing Search ('rick roll')...");
+                const searchRes = await client.search('rick roll', { type: 'video' });
+                if (searchRes.items && searchRes.items.length > 0) {
+                    const first = searchRes.items[0];
+                    log(`✅ Search OK! Found ${searchRes.items.length} items.`, 'success');
+                    log(`   First result: ${first.title} by ${first.channel?.name}`, 'success');
+                } else {
+                    allPassed = false;
+                    log(`❌ Search failed: No items found.`, 'error');
+                }
+
+                log("\n3. Testing Video Fetch (dQw4w9WgXcQ)...");
+                const videoRes = await client.getVideo('dQw4w9WgXcQ');
+                if (videoRes.title) {
+                    log(`✅ Video OK! Title: ${videoRes.title} | Views: ${videoRes.viewCount}`, 'success');
+                } else {
+                    allPassed = false;
+                    log(`❌ Video failed: Title missing.`, 'error');
+                }
+
+                log("\n4. Testing Playlist Fetch (PLE0hg-LdSfycrpTtMImPSqFLle4yYNzWD)...");
+                const plRes = await client.getPlaylist('PLE0hg-LdSfycrpTtMImPSqFLle4yYNzWD');
+                if (plRes.title) {
+                    log(`✅ Playlist OK! Title: ${plRes.title} | Videos: ${plRes.videoCount}`, 'success');
+                } else {
+                    allPassed = false;
+                    log(`❌ Playlist failed.`, 'error');
+                }
+
+                if (allPassed) {
+                    log("\n🎉 All tests executed successfully!", 'success');
+                } else {
+                    log("\n⚠️ Some tests failed — check the log above.", 'error');
+                }
+
+            } catch (err) {
+                allPassed = false;
+                log(`\n❌ Caught Error: ${err.message}`, 'error');
+                console.error(err);
+            }
+        });
+    </script>
+</body>
+</html>

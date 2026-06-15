@@ -62,4 +62,15 @@ export type {
     Thumbnail
 } from './thumbnails.js';
 
+export { VideoCompact } from './video-compact.js';
+export type { ChannelInfo } from './video-compact.js';
+export { PlaylistCompact } from './playlist-compact.js';
+export { ChannelCompact } from './channel-compact.js';
 
+export { SearchResult } from './search-result.js';
+export type { SearchItem } from './search-result.js';
+
+export { BaseVideo } from './base-video.js';
+export { Video } from './video.js';
+
+export { Playlist, PlaylistVideos } from './playlist.js';

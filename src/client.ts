@@ -6,6 +6,9 @@
 
 import { getInnerTubeConfig } from './scraper.js';
 import type { InnerTubeConfig } from './scraper.js';
+import { SearchResult } from './search-result.js';
+import { Video } from './video.js';
+import { Playlist } from './playlist.js';
 
 export interface ClientOptions {
     apiKey?: string | null;
@@ -158,5 +161,46 @@ export class Client {
         }
 
         return response.json();
+    }
+
+    /**
+     * Searches YouTube for the given query.
+     */
+    async search(query: string, options?: { type?: 'video' | 'playlist' | 'channel' | 'all' }): Promise<SearchResult> {
+        const payload: any = { query };
+        if (options?.type === 'video') {
+            payload.params = 'EgIQAQ%3D%3D'; // Static base64 for video type
+        } else if (options?.type === 'playlist') {
+            payload.params = 'EgIQAw%3D%3D'; // Static base64 for playlist type
+        } else if (options?.type === 'channel') {
+            payload.params = 'EgIQAg%3D%3D'; // Static base64 for channel type
+        }
+
+        const data = await this.request('search', payload);
+        return new SearchResult(this, data);
+    }
+
+    /**
+     * Gets metadata for a specific video.
+     */
+    async getVideo(videoId: string): Promise<Video> {
+        // Fetch both player and next endpoints to get complete metadata
+        const [playerData, nextData] = await Promise.all([
+            this.request('player', { videoId }),
+            this.request('next', { videoId })
+        ]);
+        
+        // Merge to provide all details to the Video class
+        const merged = { ...playerData, ...nextData };
+        return new Video(this, merged);
+    }
+
+    /**
+     * Gets metadata and videos for a specific playlist.
+     */
+    async getPlaylist(playlistId: string): Promise<Playlist> {
+        const browseId = playlistId.startsWith('VL') ? playlistId : `VL${playlistId}`;
+        const data = await this.request('browse', { browseId });
+        return new Playlist(this, data);
     }
 }
