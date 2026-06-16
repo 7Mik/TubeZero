@@ -77,7 +77,7 @@ export class BaseVideo extends Base {
                 width: f.width,
                 height: f.height,
                 hasVideo: !!f.width || f.mimeType?.includes('video/'),
-                hasAudio: !!f.audioBitrate || f.mimeType?.includes('audio/'),
+                hasAudio: !!f.audioBitrate || !!f.audioChannels || f.mimeType?.includes('audio/') || (f.mimeType?.includes('video/') && (f.mimeType?.includes('mp4a') || f.mimeType?.includes('opus') || f.mimeType?.includes('vorbis') || f.mimeType?.includes('ec-3'))),
                 isLive: !!data.videoDetails?.isLiveContent,
                 contentLength: f.contentLength,
                 quality: f.quality,

@@ -101,8 +101,14 @@ function decodeHtmlEntities(text: string): string {
         .replace(/&gt;/g, '>')
         .replace(/&quot;/g, '"')
         .replace(/&#39;/g, "'")
-        .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
-        .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)));
+        .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+            const code = parseInt(hex, 16);
+            return code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
+        })
+        .replace(/&#(\d+);/g, (_, dec) => {
+            const code = parseInt(dec, 10);
+            return code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
+        });
 }
 
 /**
@@ -248,7 +254,8 @@ export async function fetchSubtitlesFromYouTube(
             const json = JSON.parse(transcriptData);
             if (json.events) {
                 transcripts = json.events.map((e: any) => {
-                    const rawText = (e.segs ? e.segs.map((s: any) => s.utf8 || '').join('') : '');
+                    if (!e) return null;
+                    const rawText = (e.segs ? e.segs.map((s: any) => s?.utf8 || '').join('') : '');
                     // Clean HTML tags and decode entities
                     const cleanText = decodeHtmlEntities(rawText.replace(/<[^>]+>/g, '')).replace(/\n/g, ' ').trim();
                     return {
@@ -256,7 +263,7 @@ export async function fetchSubtitlesFromYouTube(
                         duration: (e.dDurationMs || 0) / 1000,
                         text: cleanText
                     };
-                }).filter((s: any) => s.text);
+                }).filter((s: any) => s && s.text);
             }
         } catch (jsonError) {
             console.warn("[Subtitles] Failed to parse transcript string as JSON3. Falling back to XML regex.", jsonError);

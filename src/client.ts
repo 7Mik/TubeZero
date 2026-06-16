@@ -123,10 +123,11 @@ let cachedIdToken: string | null = null;
 
 export async function getInnerTubeConfig(injectedConfig?: Partial<InnerTubeConfig> | null, customFetch?: typeof globalThis.fetch): Promise<InnerTubeConfig> {
     if (injectedConfig && injectedConfig.apiKey) {
-        cachedApiKey = injectedConfig.apiKey;
-        cachedClientVersion = injectedConfig.clientVersion || getFallbackClientVersion();
-        cachedIdToken = injectedConfig.idToken ?? null;
-        return { apiKey: cachedApiKey, clientVersion: cachedClientVersion, idToken: cachedIdToken };
+        return {
+            apiKey: injectedConfig.apiKey,
+            clientVersion: injectedConfig.clientVersion || getFallbackClientVersion(),
+            idToken: injectedConfig.idToken ?? null
+        };
     }
 
     if (cachedApiKey && cachedClientVersion) {
@@ -243,7 +244,8 @@ export class Client {
             }
         };
 
-        const cacheKey = `yt_request_${cleanEndpoint}_${JSON.stringify(bodyPayload)}`;
+        const authContext = this.idToken ? '_auth' : '_anon';
+        const cacheKey = `yt_request_${cleanEndpoint}_${JSON.stringify(bodyPayload)}${authContext}`;
         if (this.cache) {
             const cached = await this.cache.get(cacheKey);
             if (cached) return cached;
@@ -274,7 +276,8 @@ export class Client {
     async requestPlayerWithFallback(videoId: string): Promise<any> {
         await this.ensureConfig();
 
-        const cacheKey = `yt_player_fallback_${videoId}`;
+        const authContext = this.idToken ? '_auth' : '_anon';
+        const cacheKey = `yt_player_fallback_${videoId}${authContext}`;
         if (this.cache) {
             const cached = await this.cache.get(cacheKey);
             if (cached) return cached;
@@ -303,16 +306,31 @@ export class Client {
                     racyCheckOk: true
                 };
 
+                const headers: Record<string, string> = {
+                    'Content-Type': 'application/json',
+                    'User-Agent': profile.userAgent,
+                    'X-YouTube-Client-Name': profile.clientNameHeader,
+                    'X-YouTube-Client-Version': profile.clientVersion,
+                    'Origin': 'https://www.youtube.com'
+                };
+
+                if (this.idToken) headers['X-Youtube-Identity-Token'] = this.idToken;
+
+                const activeCookie = this.cookie || (typeof document !== 'undefined' ? document.cookie : '');
+                if (activeCookie) {
+                    headers['Cookie'] = activeCookie;
+                    const sapisid = getSapisidFromCookieString(activeCookie);
+                    if (sapisid) {
+                        const authHash = await getSApiSidHash(sapisid, 'https://www.youtube.com');
+                        if (authHash) headers['Authorization'] = `SAPISIDHASH ${authHash}`;
+                    }
+                }
+
                 const response = await this.fetch(url, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'User-Agent': profile.userAgent,
-                        'X-YouTube-Client-Name': profile.clientNameHeader,
-                        'X-YouTube-Client-Version': profile.clientVersion,
-                        'Origin': 'https://www.youtube.com'
-                    },
-                    body: JSON.stringify(body)
+                    headers: headers,
+                    body: JSON.stringify(body),
+                    credentials: 'include'
                 });
 
                 if (!response.ok) {

@@ -5,10 +5,12 @@ import { TranscriptSegment } from './subtitles.js';
  * SRT uses comma as the decimal separator per specification.
  */
 function formatSrtTimestamp(seconds: number): string {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    const ms = Math.round((seconds % 1) * 1000);
+    const totalMs = Math.round(seconds * 1000);
+    const ms = totalMs % 1000;
+    const totalSeconds = Math.floor(totalMs / 1000);
+    const s = totalSeconds % 60;
+    const m = Math.floor(totalSeconds / 60) % 60;
+    const h = Math.floor(totalSeconds / 3600);
     return (
         String(h).padStart(2, '0') +
         ':' +
@@ -25,10 +27,12 @@ function formatSrtTimestamp(seconds: number): string {
  * VTT uses period as the decimal separator per specification.
  */
 function formatVttTimestamp(seconds: number): string {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    const ms = Math.round((seconds % 1) * 1000);
+    const totalMs = Math.round(seconds * 1000);
+    const ms = totalMs % 1000;
+    const totalSeconds = Math.floor(totalMs / 1000);
+    const s = totalSeconds % 60;
+    const m = Math.floor(totalSeconds / 60) % 60;
+    const h = Math.floor(totalSeconds / 3600);
     return (
         String(h).padStart(2, '0') +
         ':' +
