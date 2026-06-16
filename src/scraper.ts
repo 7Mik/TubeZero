@@ -9,15 +9,11 @@ export interface VideoEntry {
     channel: string;
 }
 
-export interface InnerTubeConfig {
-    apiKey: string | null;
-    clientVersion: string;
-    idToken: string | null;
-}
-
 export interface CustomPlaylist {
     url: string;
 }
+
+import { getInnerTubeConfig, getSapisidFromCookieString, getSApiSidHash, InnerTubeConfig } from './client.js';
 
 export interface CustomPlaylistData {
     id: string;
@@ -61,45 +57,11 @@ export async function fetchYtInitialData(url: string): Promise<any> {
     return null;
 }
 
-/**
- * Reads SAPISID cookies from the browser environment.
- * Only works if running on a youtube.com domain or in an extension with cookie access.
- * @returns The SAPISID value or null.
- */
 export function getSapisidFromCookie(): string | null {
-    if (typeof document === 'undefined') return null;
-    const match = document.cookie.match(/__Secure-3PAPISID=([^;]+)/) || 
-                  document.cookie.match(/__Secure-1PAPISID=([^;]+)/) ||
-                  document.cookie.match(/SAPISID=([^;]+)/);
-    return match ? match[1] : null;
+    return getSapisidFromCookieString('');
 }
 
-/**
- * Generates the SAPISIDHASH Authorization header value needed for authenticated InnerTube requests.
- * @param sapisid - The SAPISID cookie value.
- * @param origin - The request origin.
- * @returns The generated authorization hash or null.
- */
-export async function getSApiSidHash(sapisid: string, origin: string = 'https://www.youtube.com'): Promise<string | null> {
-    if (!sapisid) return null;
-    try {
-        const timestamp = Math.floor(Date.now() / 1000);
-        const input = `${timestamp} ${sapisid} ${origin}`;
-        
-        const encoder = new TextEncoder();
-        const data = encoder.encode(input);
-        const buffer = await crypto.subtle.digest('SHA-1', data);
-        
-        const hash = Array.from(new Uint8Array(buffer))
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join('');
-            
-        return `${timestamp}_${hash}`;
-    } catch (e) {
-        console.error("[Scraper] Failed to generate SAPISIDHASH", e);
-        return null;
-    }
-}
+export { getSApiSidHash };
 
 /**
  * Recursively scans a JSON object to extract video entries { title, channel }.
@@ -200,58 +162,7 @@ export function extractVideoEntries(data: any): VideoEntry[] {
     return entries;
 }
 
-function getFallbackClientVersion(): string {
-    const d = new Date();
-    d.setDate(d.getDate() - 2);
-    const yyyymmdd = d.toISOString().split('T')[0].replace(/-/g, '');
-    return `2.${yyyymmdd}.00.00`;
-}
-
-let cachedApiKey: string | null = null;
-let cachedClientVersion: string | null = null;
-let cachedIdToken: string | null = null;
-
-/**
- * Extracts InnerTube credentials and configuration parameters by parsing the YouTube home page.
- * @param injectedConfig - Pre-fetched config if available (bypasses fetching).
- * @returns InnerTube config parameters.
- */
-export async function getInnerTubeConfig(injectedConfig?: Partial<InnerTubeConfig> | null): Promise<InnerTubeConfig> {
-    if (injectedConfig && injectedConfig.apiKey) {
-        cachedApiKey = injectedConfig.apiKey;
-        cachedClientVersion = injectedConfig.clientVersion || getFallbackClientVersion();
-        cachedIdToken = injectedConfig.idToken ?? null;
-        return { apiKey: cachedApiKey, clientVersion: cachedClientVersion, idToken: cachedIdToken };
-    }
-
-    if (cachedApiKey && cachedClientVersion) {
-        return { apiKey: cachedApiKey, clientVersion: cachedClientVersion, idToken: cachedIdToken };
-    }
-
-    try {
-        console.log("[Scraper] Fetching YouTube homepage for config...");
-        const response = await fetch('https://www.youtube.com', { credentials: 'include' });
-        const html = await response.text();
-
-        const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/);
-        const clientVersionMatch = html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/);
-        const idTokenMatch = html.match(/"ID_TOKEN":"([^"]+)"/);
-
-        if (apiKeyMatch && apiKeyMatch[1]) cachedApiKey = apiKeyMatch[1];
-        if (clientVersionMatch && clientVersionMatch[1]) cachedClientVersion = clientVersionMatch[1];
-        if (idTokenMatch && idTokenMatch[1]) cachedIdToken = idTokenMatch[1];
-
-        console.log(`[Scraper] Extracted Config — Key: ${cachedApiKey ? 'OK' : 'Failed'}, Version: ${cachedClientVersion}`);
-    } catch (e) {
-        console.warn("[Scraper] Failed to extract InnerTube config from HTML", e);
-    }
-
-    if (!cachedClientVersion) {
-        cachedClientVersion = getFallbackClientVersion();
-    }
-
-    return { apiKey: cachedApiKey, clientVersion: cachedClientVersion, idToken: cachedIdToken };
-}
+export { getInnerTubeConfig };
 
 /**
  * Recursively searches for the continuation token in an InnerTube response.

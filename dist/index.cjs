@@ -42,368 +42,16 @@ __export(index_exports, {
   findContinuationToken: () => findContinuationToken,
   getInnerTubeConfig: () => getInnerTubeConfig,
   getSApiSidHash: () => getSApiSidHash,
-  getSapisidFromCookie: () => getSapisidFromCookie,
+  getSapisidFromCookieString: () => getSapisidFromCookieString,
+  getVideoPlayback: () => getVideoPlayback,
   parseXmlTranscriptRegex: () => parseXmlTranscriptRegex,
-  scrapeTasteData: () => scrapeTasteData
+  scrapeTasteData: () => scrapeTasteData,
+  searchYouTube: () => searchYouTube,
+  toPlainText: () => toPlainText,
+  toSRT: () => toSRT,
+  toVTT: () => toVTT
 });
 module.exports = __toCommonJS(index_exports);
-
-// src/scraper.ts
-async function fetchYtInitialData(url) {
-  try {
-    console.log(`[Scraper] Fetching HTML from ${url}`);
-    const response = await fetch(url, { credentials: "include" });
-    const text = await response.text();
-    const patterns = [
-      /var ytInitialData\s*=\s*(\{.*?\});<\/script>/,
-      /window\["ytInitialData"\]\s*=\s*(\{.*?\});/
-    ];
-    for (const regex of patterns) {
-      const match = text.match(regex);
-      if (match && match[1]) {
-        return JSON.parse(match[1]);
-      }
-    }
-    console.warn(`[Scraper] Could not find ytInitialData in ${url}`);
-  } catch (e) {
-    console.error(`[Scraper] Failed to fetch data from ${url}`, e);
-  }
-  return null;
-}
-function getSapisidFromCookie() {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie.match(/__Secure-3PAPISID=([^;]+)/) || document.cookie.match(/__Secure-1PAPISID=([^;]+)/) || document.cookie.match(/SAPISID=([^;]+)/);
-  return match ? match[1] : null;
-}
-async function getSApiSidHash(sapisid, origin = "https://www.youtube.com") {
-  if (!sapisid) return null;
-  try {
-    const timestamp = Math.floor(Date.now() / 1e3);
-    const input = `${timestamp} ${sapisid} ${origin}`;
-    const encoder = new TextEncoder();
-    const data = encoder.encode(input);
-    const buffer = await crypto.subtle.digest("SHA-1", data);
-    const hash = Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
-    return `${timestamp}_${hash}`;
-  } catch (e) {
-    console.error("[Scraper] Failed to generate SAPISIDHASH", e);
-    return null;
-  }
-}
-function extractVideoEntries(data) {
-  const entries = [];
-  const seenTitles = /* @__PURE__ */ new Set();
-  function recurse(obj) {
-    if (!obj || typeof obj !== "object") return;
-    if (Array.isArray(obj)) {
-      for (let i = 0; i < obj.length; i++) {
-        recurse(obj[i]);
-      }
-      return;
-    }
-    if (obj.videoId && obj.title) {
-      let title = "";
-      if (typeof obj.title === "string") {
-        title = obj.title;
-      } else if (obj.title.runs && obj.title.runs[0] && obj.title.runs[0].text) {
-        title = obj.title.runs[0].text;
-      } else if (obj.title.simpleText) {
-        title = obj.title.simpleText;
-      }
-      title = title.trim();
-      if (title && title.length > 2 && title !== "Skip navigation") {
-        if (!seenTitles.has(title)) {
-          seenTitles.add(title);
-          let channel = "";
-          const byline = obj.longBylineText || obj.shortBylineText || obj.ownerText;
-          if (byline) {
-            if (typeof byline === "string") {
-              channel = byline;
-            } else if (byline.runs && byline.runs[0] && byline.runs[0].text) {
-              channel = byline.runs[0].text;
-            } else if (byline.simpleText) {
-              channel = byline.simpleText;
-            }
-          }
-          entries.push({
-            title,
-            channel: channel.split("\n")[0].replace(/•/g, "").trim()
-          });
-        }
-      }
-      return;
-    }
-    if (obj.lockupViewModel && obj.lockupViewModel.contentId && obj.lockupViewModel.contentType === "LOCKUP_CONTENT_TYPE_VIDEO") {
-      const model = obj.lockupViewModel;
-      const meta = model.metadata?.lockupMetadataViewModel;
-      if (meta && meta.title && meta.title.content) {
-        const title = meta.title.content.trim();
-        if (title && !seenTitles.has(title)) {
-          seenTitles.add(title);
-          let channel = "";
-          const rows = meta.metadata?.contentMetadataViewModel?.metadataRows;
-          if (rows && rows[0] && rows[0].metadataParts && rows[0].metadataParts[0] && rows[0].metadataParts[0].text) {
-            channel = rows[0].metadataParts[0].text.content || "";
-          }
-          entries.push({
-            title,
-            channel: channel.split("\n")[0].replace(/•/g, "").trim()
-          });
-        }
-      }
-      return;
-    }
-    for (const key in obj) {
-      if (Object.prototype.hasOwnProperty.call(obj, key)) {
-        recurse(obj[key]);
-      }
-    }
-  }
-  try {
-    recurse(data);
-  } catch (e) {
-    console.warn("[Scraper] Error extracting video entries recursively", e);
-  }
-  return entries;
-}
-function getFallbackClientVersion() {
-  const d = /* @__PURE__ */ new Date();
-  d.setDate(d.getDate() - 2);
-  const yyyymmdd = d.toISOString().split("T")[0].replace(/-/g, "");
-  return `2.${yyyymmdd}.00.00`;
-}
-var cachedApiKey = null;
-var cachedClientVersion = null;
-var cachedIdToken = null;
-async function getInnerTubeConfig(injectedConfig) {
-  if (injectedConfig && injectedConfig.apiKey) {
-    cachedApiKey = injectedConfig.apiKey;
-    cachedClientVersion = injectedConfig.clientVersion || getFallbackClientVersion();
-    cachedIdToken = injectedConfig.idToken ?? null;
-    return { apiKey: cachedApiKey, clientVersion: cachedClientVersion, idToken: cachedIdToken };
-  }
-  if (cachedApiKey && cachedClientVersion) {
-    return { apiKey: cachedApiKey, clientVersion: cachedClientVersion, idToken: cachedIdToken };
-  }
-  try {
-    console.log("[Scraper] Fetching YouTube homepage for config...");
-    const response = await fetch("https://www.youtube.com", { credentials: "include" });
-    const html = await response.text();
-    const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/);
-    const clientVersionMatch = html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/);
-    const idTokenMatch = html.match(/"ID_TOKEN":"([^"]+)"/);
-    if (apiKeyMatch && apiKeyMatch[1]) cachedApiKey = apiKeyMatch[1];
-    if (clientVersionMatch && clientVersionMatch[1]) cachedClientVersion = clientVersionMatch[1];
-    if (idTokenMatch && idTokenMatch[1]) cachedIdToken = idTokenMatch[1];
-    console.log(`[Scraper] Extracted Config \u2014 Key: ${cachedApiKey ? "OK" : "Failed"}, Version: ${cachedClientVersion}`);
-  } catch (e) {
-    console.warn("[Scraper] Failed to extract InnerTube config from HTML", e);
-  }
-  if (!cachedClientVersion) {
-    cachedClientVersion = getFallbackClientVersion();
-  }
-  return { apiKey: cachedApiKey, clientVersion: cachedClientVersion, idToken: cachedIdToken };
-}
-function findContinuationToken(obj) {
-  if (!obj || typeof obj !== "object") return null;
-  if (obj.continuationCommand && obj.continuationCommand.token) {
-    return obj.continuationCommand.token;
-  }
-  for (const key in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      const token = findContinuationToken(obj[key]);
-      if (token) return token;
-    }
-  }
-  return null;
-}
-async function fetchInnerTubeContinuation(apiKey, clientVersion, idToken, initialToken, limit) {
-  const entries = [];
-  let continuationToken = initialToken;
-  try {
-    while (continuationToken && entries.length < limit) {
-      const headers = {
-        "Content-Type": "application/json",
-        "X-Youtube-Client-Name": "1",
-        "X-Youtube-Client-Version": clientVersion
-      };
-      if (idToken) {
-        headers["X-Youtube-Identity-Token"] = idToken;
-      }
-      const sapisid = getSapisidFromCookie();
-      if (sapisid) {
-        const authHash = await getSApiSidHash(sapisid, "https://www.youtube.com");
-        if (authHash) {
-          headers["Authorization"] = `SAPISIDHASH ${authHash}`;
-        }
-      }
-      const response = await fetch(`https://www.youtube.com/youtubei/v1/browse?key=${apiKey}&prettyPrint=false`, {
-        method: "POST",
-        headers,
-        credentials: "include",
-        body: JSON.stringify({
-          context: {
-            client: {
-              clientName: "WEB",
-              clientVersion,
-              hl: "en",
-              gl: "US"
-            }
-          },
-          continuation: continuationToken
-        })
-      });
-      if (!response.ok) break;
-      const data = await response.json();
-      const pageEntries = extractVideoEntries(data);
-      entries.push(...pageEntries);
-      continuationToken = findContinuationToken(data);
-    }
-  } catch (e) {
-    console.error("[Scraper] Error in InnerTube pagination", e);
-  }
-  return entries;
-}
-async function fetchInnerTubeFeed(apiKey, clientVersion, idToken, browseId, limit = 500) {
-  const entries = [];
-  try {
-    const headers = {
-      "Content-Type": "application/json",
-      "X-Youtube-Client-Name": "1",
-      "X-Youtube-Client-Version": clientVersion
-    };
-    if (idToken) {
-      headers["X-Youtube-Identity-Token"] = idToken;
-    }
-    const sapisid = getSapisidFromCookie();
-    if (sapisid) {
-      const authHash = await getSApiSidHash(sapisid, "https://www.youtube.com");
-      if (authHash) {
-        headers["Authorization"] = `SAPISIDHASH ${authHash}`;
-      }
-    }
-    const response = await fetch(`https://www.youtube.com/youtubei/v1/browse?key=${apiKey}&prettyPrint=false`, {
-      method: "POST",
-      headers,
-      credentials: "include",
-      body: JSON.stringify({
-        context: {
-          client: {
-            clientName: "WEB",
-            clientVersion,
-            hl: "en",
-            gl: "US"
-          }
-        },
-        browseId
-      })
-    });
-    if (!response.ok) return [];
-    const data = await response.json();
-    const pageEntries = extractVideoEntries(data);
-    entries.push(...pageEntries);
-    if (entries.length < limit) {
-      const continuationToken = findContinuationToken(data);
-      if (continuationToken) {
-        const more = await fetchInnerTubeContinuation(apiKey, clientVersion, idToken, continuationToken, limit - entries.length);
-        entries.push(...more);
-      }
-    }
-  } catch (e) {
-    console.error(`[Scraper] InnerTube fetch error for ${browseId}`, e);
-  }
-  return entries;
-}
-async function scrapeTasteData(injectedConfig, customPlaylists = [], limit = 500) {
-  let historyEntries = [];
-  let likesEntries = [];
-  let wlEntries = [];
-  const dislikesEntries = [];
-  const config = await getInnerTubeConfig(injectedConfig);
-  const apiKey = config.apiKey;
-  const clientVersion = config.clientVersion;
-  const idToken = config.idToken;
-  if (apiKey) {
-    historyEntries = await fetchInnerTubeFeed(apiKey, clientVersion, idToken, "FEhistory", limit);
-    likesEntries = await fetchInnerTubeFeed(apiKey, clientVersion, idToken, "VLLL", limit);
-    wlEntries = await fetchInnerTubeFeed(apiKey, clientVersion, idToken, "VLWL", limit);
-  }
-  if (historyEntries.length === 0) {
-    const historyData = await fetchYtInitialData("https://www.youtube.com/feed/history");
-    if (historyData) {
-      historyEntries = extractVideoEntries(historyData);
-      if (historyEntries.length < limit) {
-        const token = findContinuationToken(historyData);
-        if (token && apiKey) {
-          const more = await fetchInnerTubeContinuation(apiKey, clientVersion, idToken, token, limit - historyEntries.length);
-          historyEntries.push(...more);
-        }
-      }
-    }
-  }
-  if (likesEntries.length === 0) {
-    const likesData = await fetchYtInitialData("https://www.youtube.com/playlist?list=LL");
-    if (likesData) {
-      likesEntries = extractVideoEntries(likesData);
-      if (likesEntries.length < limit) {
-        const token = findContinuationToken(likesData);
-        if (token && apiKey) {
-          const more = await fetchInnerTubeContinuation(apiKey, clientVersion, idToken, token, limit - likesEntries.length);
-          likesEntries.push(...more);
-        }
-      }
-    }
-  }
-  if (wlEntries.length === 0) {
-    const wlData = await fetchYtInitialData("https://www.youtube.com/playlist?list=WL");
-    if (wlData) {
-      wlEntries = extractVideoEntries(wlData);
-      if (wlEntries.length < limit) {
-        const token = findContinuationToken(wlData);
-        if (token && apiKey) {
-          const more = await fetchInnerTubeContinuation(apiKey, clientVersion, idToken, token, limit - wlEntries.length);
-          wlEntries.push(...more);
-        }
-      }
-    }
-  }
-  const customPlaylistsData = [];
-  for (const pl of customPlaylists) {
-    if (!pl.url) continue;
-    const match = pl.url.match(/[&?]list=([a-zA-Z0-9_-]+)/);
-    const playlistId = match ? match[1] : pl.url.trim();
-    if (!playlistId || !/^[a-zA-Z0-9_-]+$/.test(playlistId)) continue;
-    const browseId = playlistId.startsWith("VL") ? playlistId : "VL" + playlistId;
-    let entries = [];
-    if (apiKey) {
-      entries = await fetchInnerTubeFeed(apiKey, clientVersion, idToken, browseId, limit);
-    }
-    if (entries.length === 0) {
-      const data = await fetchYtInitialData(`https://www.youtube.com/playlist?list=${playlistId}`);
-      if (data) {
-        entries = extractVideoEntries(data);
-        if (entries.length < limit) {
-          const token = findContinuationToken(data);
-          if (token && apiKey) {
-            const more = await fetchInnerTubeContinuation(apiKey, clientVersion, idToken, token, limit - entries.length);
-            entries.push(...more);
-          }
-        }
-      }
-    }
-    customPlaylistsData.push({
-      id: playlistId,
-      entries: entries.slice(0, limit)
-    });
-  }
-  return {
-    historyEntries: historyEntries.slice(0, limit),
-    likesEntries: likesEntries.slice(0, limit),
-    wlEntries: wlEntries.slice(0, limit),
-    dislikesEntries: dislikesEntries.slice(0, limit),
-    customPlaylistsData
-  };
-}
 
 // src/base.ts
 var Base = class {
@@ -726,6 +374,7 @@ var BaseVideo = class extends Base {
   publishDate;
   channel;
   isLive;
+  streamingData;
   constructor(client, data) {
     super(client);
     this.id = "";
@@ -750,6 +399,29 @@ var BaseVideo = class extends Base {
       name: videoDetails.author || videoDetails.ownerChannelName || "",
       id: videoDetails.channelId || videoDetails.externalChannelId || ""
     };
+    if (data.streamingData) {
+      const parseFormat = (f) => ({
+        itag: f.itag,
+        url: f.url,
+        mimeType: f.mimeType,
+        bitrate: f.bitrate,
+        width: f.width,
+        height: f.height,
+        hasVideo: !!f.width || f.mimeType?.includes("video/"),
+        hasAudio: !!f.audioBitrate || f.mimeType?.includes("audio/"),
+        isLive: !!data.videoDetails?.isLiveContent,
+        contentLength: f.contentLength,
+        quality: f.quality,
+        qualityLabel: f.qualityLabel,
+        audioQuality: f.audioQuality,
+        approxDurationMs: f.approxDurationMs
+      });
+      this.streamingData = {
+        expiresInSeconds: data.streamingData.expiresInSeconds || "0",
+        formats: (data.streamingData.formats || []).map(parseFormat),
+        adaptiveFormats: (data.streamingData.adaptiveFormats || []).map(parseFormat)
+      };
+    }
   }
 };
 
@@ -868,17 +540,64 @@ var Playlist = class extends Base {
 };
 
 // src/client.ts
-function getFallbackClientVersion2() {
+var CLIENT_PROFILES = [
+  {
+    name: "ios",
+    clientName: "IOS",
+    clientVersion: "20.10.4",
+    clientNameHeader: "5",
+    userAgent: "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
+    context: {
+      deviceMake: "Apple",
+      deviceModel: "iPhone16,2",
+      platform: "MOBILE",
+      osName: "iOS",
+      osVersion: "18.3.2.22D82"
+    }
+  },
+  {
+    name: "android_vr",
+    clientName: "ANDROID_VR",
+    clientVersion: "1.62.20",
+    clientNameHeader: "28",
+    userAgent: "com.google.android.apps.youtube.vr.oculus/1.62.20 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+    context: {
+      deviceMake: "Oculus",
+      deviceModel: "Quest 3",
+      platform: "MOBILE",
+      osName: "Android",
+      osVersion: "12L",
+      androidSdkVersion: 32
+    }
+  },
+  {
+    name: "mweb",
+    clientName: "MWEB",
+    clientVersion: "2.20251209.01.00",
+    clientNameHeader: "2",
+    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+    context: {
+      platform: "MOBILE",
+      osName: "iOS",
+      osVersion: "17.5.1"
+    }
+  }
+];
+function getFallbackClientVersion() {
   const d = /* @__PURE__ */ new Date();
   d.setDate(d.getDate() - 2);
   const yyyymmdd = d.toISOString().split("T")[0].replace(/-/g, "");
   return `2.${yyyymmdd}.00.00`;
 }
 function getSapisidFromCookieString(cookieString) {
+  if (!cookieString && typeof document !== "undefined") {
+    cookieString = document.cookie;
+  }
+  if (!cookieString) return null;
   const match = cookieString.match(/__Secure-3PAPISID=([^;]+)/) || cookieString.match(/__Secure-1PAPISID=([^;]+)/) || cookieString.match(/SAPISID=([^;]+)/);
   return match ? match[1] : null;
 }
-async function getSApiSidHash2(sapisid, origin = "https://www.youtube.com") {
+async function getSApiSidHash(sapisid, origin = "https://www.youtube.com") {
   if (!sapisid) return null;
   try {
     const timestamp = Math.floor(Date.now() / 1e3);
@@ -893,13 +612,46 @@ async function getSApiSidHash2(sapisid, origin = "https://www.youtube.com") {
     return null;
   }
 }
+var cachedApiKey = null;
+var cachedClientVersion = null;
+var cachedIdToken = null;
+async function getInnerTubeConfig(injectedConfig, customFetch) {
+  if (injectedConfig && injectedConfig.apiKey) {
+    cachedApiKey = injectedConfig.apiKey;
+    cachedClientVersion = injectedConfig.clientVersion || getFallbackClientVersion();
+    cachedIdToken = injectedConfig.idToken ?? null;
+    return { apiKey: cachedApiKey, clientVersion: cachedClientVersion, idToken: cachedIdToken };
+  }
+  if (cachedApiKey && cachedClientVersion) {
+    return { apiKey: cachedApiKey, clientVersion: cachedClientVersion, idToken: cachedIdToken };
+  }
+  try {
+    const fetchFn = customFetch || (typeof globalThis !== "undefined" ? globalThis.fetch : fetch);
+    const response = await fetchFn("https://www.youtube.com", { credentials: "include" });
+    const html = await response.text();
+    const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/);
+    const clientVersionMatch = html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/);
+    const idTokenMatch = html.match(/"ID_TOKEN":"([^"]+)"/);
+    if (apiKeyMatch && apiKeyMatch[1]) cachedApiKey = apiKeyMatch[1];
+    if (clientVersionMatch && clientVersionMatch[1]) cachedClientVersion = clientVersionMatch[1];
+    if (idTokenMatch && idTokenMatch[1]) cachedIdToken = idTokenMatch[1];
+  } catch (e) {
+    console.warn("[Client] Failed to extract InnerTube config from HTML", e);
+  }
+  if (!cachedClientVersion) cachedClientVersion = getFallbackClientVersion();
+  return { apiKey: cachedApiKey, clientVersion: cachedClientVersion, idToken: cachedIdToken };
+}
 var Client = class {
   apiKey = null;
   clientVersion = "";
   idToken = null;
   cookie = "";
+  fetch;
+  cache;
   constructor(options = {}) {
     this.cookie = options.cookie !== void 0 ? options.cookie : "";
+    this.fetch = options.fetch || (typeof globalThis !== "undefined" ? globalThis.fetch : fetch);
+    this.cache = options.cache;
     let resolvedApiKey = options.apiKey !== void 0 ? options.apiKey : null;
     let resolvedClientVersion = options.clientVersion !== void 0 ? options.clientVersion : null;
     let resolvedIdToken = options.idToken !== void 0 ? options.idToken : null;
@@ -916,26 +668,18 @@ var Client = class {
       }
     }
     this.apiKey = resolvedApiKey;
-    this.clientVersion = resolvedClientVersion || getFallbackClientVersion2();
+    this.clientVersion = resolvedClientVersion || getFallbackClientVersion();
     this.idToken = resolvedIdToken;
   }
-  /**
-   * Asynchronously resolves config parameters if apiKey is not set yet.
-   * Fetches and parses YouTube's home page HTML using the scraper logic.
-   */
   async ensureConfig() {
-    if (this.apiKey) {
-      return;
-    }
-    const config = await getInnerTubeConfig();
+    if (this.apiKey) return;
+    const config = await getInnerTubeConfig(null, this.fetch);
     this.apiKey = config.apiKey;
-    if (config.clientVersion) {
-      this.clientVersion = config.clientVersion;
-    }
+    if (config.clientVersion) this.clientVersion = config.clientVersion;
     this.idToken = config.idToken;
   }
   /**
-   * Dispatches an authenticated or unauthenticated POST request to the specified InnerTube endpoint.
+   * Standard InnerTube request using the WEB client (useful for authenticated endpoints).
    */
   async request(endpoint, payload) {
     await this.ensureConfig();
@@ -949,18 +693,14 @@ var Client = class {
       "X-Youtube-Client-Name": "1",
       "X-Youtube-Client-Version": this.clientVersion
     };
-    if (this.idToken) {
-      headers["X-Youtube-Identity-Token"] = this.idToken;
-    }
+    if (this.idToken) headers["X-Youtube-Identity-Token"] = this.idToken;
     const activeCookie = this.cookie || (typeof document !== "undefined" ? document.cookie : "");
     if (activeCookie) {
       headers["Cookie"] = activeCookie;
       const sapisid = getSapisidFromCookieString(activeCookie);
       if (sapisid) {
-        const authHash = await getSApiSidHash2(sapisid, "https://www.youtube.com");
-        if (authHash) {
-          headers["Authorization"] = `SAPISIDHASH ${authHash}`;
-        }
+        const authHash = await getSApiSidHash(sapisid, "https://www.youtube.com");
+        if (authHash) headers["Authorization"] = `SAPISIDHASH ${authHash}`;
       }
     }
     const bodyPayload = payload && typeof payload === "object" ? payload : {};
@@ -977,7 +717,12 @@ var Client = class {
         }
       }
     };
-    const response = await fetch(url, {
+    const cacheKey = `yt_request_${cleanEndpoint}_${JSON.stringify(bodyPayload)}`;
+    if (this.cache) {
+      const cached = await this.cache.get(cacheKey);
+      if (cached) return cached;
+    }
+    const response = await this.fetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(requestBody),
@@ -986,43 +731,448 @@ var Client = class {
     if (!response.ok) {
       throw new Error(`InnerTube request failed with status: ${response.status}`);
     }
-    return response.json();
+    const data = await response.json();
+    if (this.cache) {
+      await this.cache.set(cacheKey, data);
+    }
+    return data;
   }
   /**
-   * Searches YouTube for the given query.
+   * Specialized request for the /player endpoint that loops through client profiles
+   * to bypass IP blocks or Captcha walls.
    */
+  async requestPlayerWithFallback(videoId) {
+    await this.ensureConfig();
+    const cacheKey = `yt_player_fallback_${videoId}`;
+    if (this.cache) {
+      const cached = await this.cache.get(cacheKey);
+      if (cached) return cached;
+    }
+    const url = `https://www.youtube.com/youtubei/v1/player?key=${this.apiKey}&prettyPrint=false`;
+    let firstPlayable = null;
+    const failures = [];
+    for (const profile of CLIENT_PROFILES) {
+      try {
+        const body = {
+          videoId,
+          context: {
+            client: {
+              clientName: profile.clientName,
+              clientVersion: profile.clientVersion,
+              hl: "en",
+              gl: "US",
+              ...profile.context
+            },
+            user: { lockedSafetyMode: false },
+            request: { useSsl: true }
+          },
+          contentCheckOk: true,
+          racyCheckOk: true
+        };
+        const response = await this.fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "User-Agent": profile.userAgent,
+            "X-YouTube-Client-Name": profile.clientNameHeader,
+            "X-YouTube-Client-Version": profile.clientVersion,
+            "Origin": "https://www.youtube.com"
+          },
+          body: JSON.stringify(body)
+        });
+        if (!response.ok) {
+          failures.push(`${profile.name}: ${response.status}`);
+          continue;
+        }
+        const data = await response.json();
+        const status = data.playabilityStatus?.status;
+        if (status && status !== "OK") {
+          const reason = data.playabilityStatus?.reason;
+          failures.push(`${profile.name}: ${status}${reason ? ` - ${reason}` : ""}`);
+          continue;
+        }
+        if (!firstPlayable) firstPlayable = data;
+        const tracks = data.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+        if (tracks && tracks.length > 0) {
+          if (this.cache) await this.cache.set(cacheKey, data);
+          return data;
+        }
+        failures.push(`${profile.name}: OK but no caption tracks`);
+      } catch (err) {
+        failures.push(`${profile.name}: ${err.message}`);
+      }
+    }
+    if (firstPlayable) {
+      if (this.cache) await this.cache.set(cacheKey, firstPlayable);
+      return firstPlayable;
+    }
+    console.warn(`[Client] All mobile profiles failed, falling back to WEB profile. Attempts:
+${failures.join("\n")}`);
+    return this.request("player", { videoId, contentCheckOk: true, racyCheckOk: true });
+  }
   async search(query, options) {
     const payload = { query };
-    if (options?.type === "video") {
-      payload.params = "EgIQAQ%3D%3D";
-    } else if (options?.type === "playlist") {
-      payload.params = "EgIQAw%3D%3D";
-    } else if (options?.type === "channel") {
-      payload.params = "EgIQAg%3D%3D";
-    }
+    if (options?.type === "video") payload.params = "EgIQAQ%3D%3D";
+    else if (options?.type === "playlist") payload.params = "EgIQAw%3D%3D";
+    else if (options?.type === "channel") payload.params = "EgIQAg%3D%3D";
     const data = await this.request("search", payload);
     return new SearchResult(this, data);
   }
-  /**
-   * Gets metadata for a specific video.
-   */
   async getVideo(videoId) {
     const [playerData, nextData] = await Promise.all([
-      this.request("player", { videoId }),
+      this.requestPlayerWithFallback(videoId),
       this.request("next", { videoId })
     ]);
     const merged = { ...playerData, ...nextData };
     return new Video(this, merged);
   }
-  /**
-   * Gets metadata and videos for a specific playlist.
-   */
   async getPlaylist(playlistId) {
     const browseId = playlistId.startsWith("VL") ? playlistId : `VL${playlistId}`;
     const data = await this.request("browse", { browseId });
     return new Playlist(this, data);
   }
 };
+
+// src/scraper.ts
+async function fetchYtInitialData(url) {
+  try {
+    console.log(`[Scraper] Fetching HTML from ${url}`);
+    const response = await fetch(url, { credentials: "include" });
+    const text = await response.text();
+    const patterns = [
+      /var ytInitialData\s*=\s*(\{.*?\});<\/script>/,
+      /window\["ytInitialData"\]\s*=\s*(\{.*?\});/
+    ];
+    for (const regex of patterns) {
+      const match = text.match(regex);
+      if (match && match[1]) {
+        return JSON.parse(match[1]);
+      }
+    }
+    console.warn(`[Scraper] Could not find ytInitialData in ${url}`);
+  } catch (e) {
+    console.error(`[Scraper] Failed to fetch data from ${url}`, e);
+  }
+  return null;
+}
+function getSapisidFromCookie() {
+  return getSapisidFromCookieString("");
+}
+function extractVideoEntries(data) {
+  const entries = [];
+  const seenTitles = /* @__PURE__ */ new Set();
+  function recurse(obj) {
+    if (!obj || typeof obj !== "object") return;
+    if (Array.isArray(obj)) {
+      for (let i = 0; i < obj.length; i++) {
+        recurse(obj[i]);
+      }
+      return;
+    }
+    if (obj.videoId && obj.title) {
+      let title = "";
+      if (typeof obj.title === "string") {
+        title = obj.title;
+      } else if (obj.title.runs && obj.title.runs[0] && obj.title.runs[0].text) {
+        title = obj.title.runs[0].text;
+      } else if (obj.title.simpleText) {
+        title = obj.title.simpleText;
+      }
+      title = title.trim();
+      if (title && title.length > 2 && title !== "Skip navigation") {
+        if (!seenTitles.has(title)) {
+          seenTitles.add(title);
+          let channel = "";
+          const byline = obj.longBylineText || obj.shortBylineText || obj.ownerText;
+          if (byline) {
+            if (typeof byline === "string") {
+              channel = byline;
+            } else if (byline.runs && byline.runs[0] && byline.runs[0].text) {
+              channel = byline.runs[0].text;
+            } else if (byline.simpleText) {
+              channel = byline.simpleText;
+            }
+          }
+          entries.push({
+            title,
+            channel: channel.split("\n")[0].replace(/•/g, "").trim()
+          });
+        }
+      }
+      return;
+    }
+    if (obj.lockupViewModel && obj.lockupViewModel.contentId && obj.lockupViewModel.contentType === "LOCKUP_CONTENT_TYPE_VIDEO") {
+      const model = obj.lockupViewModel;
+      const meta = model.metadata?.lockupMetadataViewModel;
+      if (meta && meta.title && meta.title.content) {
+        const title = meta.title.content.trim();
+        if (title && !seenTitles.has(title)) {
+          seenTitles.add(title);
+          let channel = "";
+          const rows = meta.metadata?.contentMetadataViewModel?.metadataRows;
+          if (rows && rows[0] && rows[0].metadataParts && rows[0].metadataParts[0] && rows[0].metadataParts[0].text) {
+            channel = rows[0].metadataParts[0].text.content || "";
+          }
+          entries.push({
+            title,
+            channel: channel.split("\n")[0].replace(/•/g, "").trim()
+          });
+        }
+      }
+      return;
+    }
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        recurse(obj[key]);
+      }
+    }
+  }
+  try {
+    recurse(data);
+  } catch (e) {
+    console.warn("[Scraper] Error extracting video entries recursively", e);
+  }
+  return entries;
+}
+function findContinuationToken(obj) {
+  if (!obj || typeof obj !== "object") return null;
+  if (obj.continuationCommand && obj.continuationCommand.token) {
+    return obj.continuationCommand.token;
+  }
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const token = findContinuationToken(obj[key]);
+      if (token) return token;
+    }
+  }
+  return null;
+}
+async function fetchInnerTubeContinuation(apiKey, clientVersion, idToken, initialToken, limit) {
+  const entries = [];
+  let continuationToken = initialToken;
+  try {
+    while (continuationToken && entries.length < limit) {
+      const headers = {
+        "Content-Type": "application/json",
+        "X-Youtube-Client-Name": "1",
+        "X-Youtube-Client-Version": clientVersion
+      };
+      if (idToken) {
+        headers["X-Youtube-Identity-Token"] = idToken;
+      }
+      const sapisid = getSapisidFromCookie();
+      if (sapisid) {
+        const authHash = await getSApiSidHash(sapisid, "https://www.youtube.com");
+        if (authHash) {
+          headers["Authorization"] = `SAPISIDHASH ${authHash}`;
+        }
+      }
+      const response = await fetch(`https://www.youtube.com/youtubei/v1/browse?key=${apiKey}&prettyPrint=false`, {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: JSON.stringify({
+          context: {
+            client: {
+              clientName: "WEB",
+              clientVersion,
+              hl: "en",
+              gl: "US"
+            }
+          },
+          continuation: continuationToken
+        })
+      });
+      if (!response.ok) break;
+      const data = await response.json();
+      const pageEntries = extractVideoEntries(data);
+      entries.push(...pageEntries);
+      continuationToken = findContinuationToken(data);
+    }
+  } catch (e) {
+    console.error("[Scraper] Error in InnerTube pagination", e);
+  }
+  return entries;
+}
+async function fetchInnerTubeFeed(apiKey, clientVersion, idToken, browseId, limit = 500) {
+  const entries = [];
+  try {
+    const headers = {
+      "Content-Type": "application/json",
+      "X-Youtube-Client-Name": "1",
+      "X-Youtube-Client-Version": clientVersion
+    };
+    if (idToken) {
+      headers["X-Youtube-Identity-Token"] = idToken;
+    }
+    const sapisid = getSapisidFromCookie();
+    if (sapisid) {
+      const authHash = await getSApiSidHash(sapisid, "https://www.youtube.com");
+      if (authHash) {
+        headers["Authorization"] = `SAPISIDHASH ${authHash}`;
+      }
+    }
+    const response = await fetch(`https://www.youtube.com/youtubei/v1/browse?key=${apiKey}&prettyPrint=false`, {
+      method: "POST",
+      headers,
+      credentials: "include",
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: "WEB",
+            clientVersion,
+            hl: "en",
+            gl: "US"
+          }
+        },
+        browseId
+      })
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    const pageEntries = extractVideoEntries(data);
+    entries.push(...pageEntries);
+    if (entries.length < limit) {
+      const continuationToken = findContinuationToken(data);
+      if (continuationToken) {
+        const more = await fetchInnerTubeContinuation(apiKey, clientVersion, idToken, continuationToken, limit - entries.length);
+        entries.push(...more);
+      }
+    }
+  } catch (e) {
+    console.error(`[Scraper] InnerTube fetch error for ${browseId}`, e);
+  }
+  return entries;
+}
+async function scrapeTasteData(injectedConfig, customPlaylists = [], limit = 500) {
+  let historyEntries = [];
+  let likesEntries = [];
+  let wlEntries = [];
+  const dislikesEntries = [];
+  const config = await getInnerTubeConfig(injectedConfig);
+  const apiKey = config.apiKey;
+  const clientVersion = config.clientVersion;
+  const idToken = config.idToken;
+  if (apiKey) {
+    historyEntries = await fetchInnerTubeFeed(apiKey, clientVersion, idToken, "FEhistory", limit);
+    likesEntries = await fetchInnerTubeFeed(apiKey, clientVersion, idToken, "VLLL", limit);
+    wlEntries = await fetchInnerTubeFeed(apiKey, clientVersion, idToken, "VLWL", limit);
+  }
+  if (historyEntries.length === 0) {
+    const historyData = await fetchYtInitialData("https://www.youtube.com/feed/history");
+    if (historyData) {
+      historyEntries = extractVideoEntries(historyData);
+      if (historyEntries.length < limit) {
+        const token = findContinuationToken(historyData);
+        if (token && apiKey) {
+          const more = await fetchInnerTubeContinuation(apiKey, clientVersion, idToken, token, limit - historyEntries.length);
+          historyEntries.push(...more);
+        }
+      }
+    }
+  }
+  if (likesEntries.length === 0) {
+    const likesData = await fetchYtInitialData("https://www.youtube.com/playlist?list=LL");
+    if (likesData) {
+      likesEntries = extractVideoEntries(likesData);
+      if (likesEntries.length < limit) {
+        const token = findContinuationToken(likesData);
+        if (token && apiKey) {
+          const more = await fetchInnerTubeContinuation(apiKey, clientVersion, idToken, token, limit - likesEntries.length);
+          likesEntries.push(...more);
+        }
+      }
+    }
+  }
+  if (wlEntries.length === 0) {
+    const wlData = await fetchYtInitialData("https://www.youtube.com/playlist?list=WL");
+    if (wlData) {
+      wlEntries = extractVideoEntries(wlData);
+      if (wlEntries.length < limit) {
+        const token = findContinuationToken(wlData);
+        if (token && apiKey) {
+          const more = await fetchInnerTubeContinuation(apiKey, clientVersion, idToken, token, limit - wlEntries.length);
+          wlEntries.push(...more);
+        }
+      }
+    }
+  }
+  const customPlaylistsData = [];
+  for (const pl of customPlaylists) {
+    if (!pl.url) continue;
+    const match = pl.url.match(/[&?]list=([a-zA-Z0-9_-]+)/);
+    const playlistId = match ? match[1] : pl.url.trim();
+    if (!playlistId || !/^[a-zA-Z0-9_-]+$/.test(playlistId)) continue;
+    const browseId = playlistId.startsWith("VL") ? playlistId : "VL" + playlistId;
+    let entries = [];
+    if (apiKey) {
+      entries = await fetchInnerTubeFeed(apiKey, clientVersion, idToken, browseId, limit);
+    }
+    if (entries.length === 0) {
+      const data = await fetchYtInitialData(`https://www.youtube.com/playlist?list=${playlistId}`);
+      if (data) {
+        entries = extractVideoEntries(data);
+        if (entries.length < limit) {
+          const token = findContinuationToken(data);
+          if (token && apiKey) {
+            const more = await fetchInnerTubeContinuation(apiKey, clientVersion, idToken, token, limit - entries.length);
+            entries.push(...more);
+          }
+        }
+      }
+    }
+    customPlaylistsData.push({
+      id: playlistId,
+      entries: entries.slice(0, limit)
+    });
+  }
+  return {
+    historyEntries: historyEntries.slice(0, limit),
+    likesEntries: likesEntries.slice(0, limit),
+    wlEntries: wlEntries.slice(0, limit),
+    dislikesEntries: dislikesEntries.slice(0, limit),
+    customPlaylistsData
+  };
+}
+
+// src/formatters.ts
+function formatSrtTimestamp(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor(seconds % 3600 / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.round(seconds % 1 * 1e3);
+  return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0") + "," + String(ms).padStart(3, "0");
+}
+function formatVttTimestamp(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor(seconds % 3600 / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.round(seconds % 1 * 1e3);
+  return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0") + "." + String(ms).padStart(3, "0");
+}
+function toSRT(segments) {
+  return segments.map((segment, index) => {
+    const start = formatSrtTimestamp(segment.start);
+    const end = formatSrtTimestamp(segment.start + segment.duration);
+    return `${index + 1}
+${start} --> ${end}
+${segment.text}`;
+  }).join("\n\n");
+}
+function toVTT(segments) {
+  const cues = segments.map((segment) => {
+    const start = formatVttTimestamp(segment.start);
+    const end = formatVttTimestamp(segment.start + segment.duration);
+    return `${start} --> ${end}
+${segment.text}`;
+  }).join("\n\n");
+  return `WEBVTT
+
+${cues}`;
+}
+function toPlainText(segments, separator = "\n") {
+  return segments.map((segment) => segment.text).join(separator);
+}
 
 // src/comments.ts
 function findValue(obj, path, defaultValue = void 0) {
@@ -1146,7 +1296,7 @@ async function fetchCommentsFromYouTube(videoId, count = 50, injectedConfig = nu
       console.log(`[Comments] Fetching comment batch, total comments so far: ${fetchedCount}`);
       const options = createCommentsApiRequestOptions(continuationToken, clientVersion);
       const headers = { ...options.headers };
-      const sapisid = getSapisidFromCookie();
+      const sapisid = getSapisidFromCookieString();
       if (sapisid) {
         const authHash = await getSApiSidHash(sapisid);
         if (authHash) {
@@ -1285,6 +1435,9 @@ function extractPlayerResponse(html) {
   }
   return null;
 }
+function decodeHtmlEntities(text) {
+  return text.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16))).replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)));
+}
 function parseXmlTranscriptRegex(xmlText) {
   const segments = [];
   const regex = /<text start="([^"]+)" dur="([^"]+)"[^>]*>(.*?)<\/text>/g;
@@ -1292,26 +1445,45 @@ function parseXmlTranscriptRegex(xmlText) {
   while ((match = regex.exec(xmlText)) !== null) {
     const start = parseFloat(match[1]);
     const duration = parseFloat(match[2]);
-    const text = match[3].replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\n/g, " ").trim();
+    let text = decodeHtmlEntities(match[3]).replace(/\n/g, " ").trim();
     if (text && !isNaN(start)) {
       segments.push({ start, duration, text });
     }
   }
   return segments;
 }
-async function fetchSubtitlesFromYouTube(videoId, language = "en") {
+async function fetchSubtitlesFromYouTube(videoId, language = "en", clientOrOptions) {
   try {
-    console.log(`[Subtitles] Fetching video watch page for video: ${videoId}`);
-    const videoPageUrl = `https://www.youtube.com/watch?v=${videoId}&bpctr=9999999999`;
-    const response = await fetch(videoPageUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-        "Accept-Language": "en-US"
-      }
-    });
-    const pageHtml = await response.text();
-    console.log("[Subtitles] Extracting caption tracks...");
-    const playerResponse = extractPlayerResponse(pageHtml);
+    let client;
+    if (clientOrOptions instanceof Client) {
+      client = clientOrOptions;
+    } else {
+      client = new Client(clientOrOptions);
+    }
+    const cacheKey = `yt_subtitles_${videoId}_${language}`;
+    if (client.cache) {
+      const cached = await client.cache.get(cacheKey);
+      if (cached) return cached;
+    }
+    console.log(`[Subtitles] Fetching player data for video: ${videoId}`);
+    let playerResponse = null;
+    try {
+      playerResponse = await client.requestPlayerWithFallback(videoId);
+    } catch (apiError) {
+      console.warn(`[Subtitles] InnerTube API failed for ${videoId}. Falling back to HTML scraping.`, apiError);
+    }
+    if (!playerResponse || !playerResponse.captions || !playerResponse.captions.playerCaptionsTracklistRenderer) {
+      console.log(`[Subtitles] No captions in API response, trying HTML scraping fallback for ${videoId}`);
+      const videoPageUrl = `https://www.youtube.com/watch?v=${videoId}&bpctr=9999999999`;
+      const response = await client.fetch(videoPageUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+          "Accept-Language": "en-US"
+        }
+      });
+      const pageHtml = await response.text();
+      playerResponse = extractPlayerResponse(pageHtml);
+    }
     if (!playerResponse || !playerResponse.captions || !playerResponse.captions.playerCaptionsTracklistRenderer) {
       console.warn(`[Subtitles] No captions tracklist found for video: ${videoId}`);
       return [];
@@ -1323,6 +1495,7 @@ async function fetchSubtitlesFromYouTube(videoId, language = "en") {
     }
     const tracks = captionTracks.map((t) => ({
       baseUrl: t.baseUrl,
+      vssId: t.vssId,
       languageCode: t.languageCode,
       name: t.name?.simpleText || t.name,
       isTranslatable: t.kind === "asr"
@@ -1330,9 +1503,7 @@ async function fetchSubtitlesFromYouTube(videoId, language = "en") {
     let selectedTrack;
     if (language && language !== "auto") {
       const lowerLang = language.toLowerCase();
-      selectedTrack = tracks.find((t) => t.languageCode.toLowerCase() === lowerLang && !t.isTranslatable);
-      if (!selectedTrack) selectedTrack = tracks.find((t) => t.languageCode.toLowerCase() === lowerLang);
-      if (!selectedTrack) selectedTrack = tracks.find((t) => t.languageCode.toLowerCase().includes(lowerLang));
+      selectedTrack = tracks.find((t) => t.vssId === `.${lowerLang}`) || tracks.find((t) => t.vssId === `a.${lowerLang}`) || tracks.find((t) => t.languageCode.toLowerCase() === lowerLang && !t.isTranslatable) || tracks.find((t) => t.languageCode.toLowerCase() === lowerLang) || tracks.find((t) => t.languageCode.toLowerCase().includes(lowerLang));
     }
     if (!selectedTrack) {
       selectedTrack = tracks.find((t) => t.languageCode.toLowerCase().startsWith("en") && !t.isTranslatable);
@@ -1346,9 +1517,10 @@ async function fetchSubtitlesFromYouTube(videoId, language = "en") {
       return [];
     }
     console.log(`[Subtitles] Selected track: ${selectedTrack.languageCode} (${selectedTrack.isTranslatable ? "ASR/Auto" : "Manual"})`);
-    const urlWithFormat = selectedTrack.baseUrl.includes("&fmt=") ? selectedTrack.baseUrl : `${selectedTrack.baseUrl}&fmt=srv3`;
+    let urlWithFormat = selectedTrack.baseUrl.replace(/&fmt=[^&]+/, "");
+    urlWithFormat += "&fmt=json3";
     console.log(`[Subtitles] Fetching transcript from: ${urlWithFormat.substring(0, 100)}...`);
-    const transcriptResponse = await fetch(urlWithFormat, {
+    const transcriptResponse = await client.fetch(urlWithFormat, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
         "Referer": "https://www.youtube.com/",
@@ -1357,21 +1529,30 @@ async function fetchSubtitlesFromYouTube(videoId, language = "en") {
     });
     const transcriptData = await transcriptResponse.text();
     let transcripts = [];
-    if (transcriptData.trim().startsWith("<?xml") || transcriptData.includes("<transcript>") || transcriptData.includes("<text start=")) {
-      transcripts = parseXmlTranscriptRegex(transcriptData);
-    } else {
-      try {
-        const json = JSON.parse(transcriptData);
-        if (json.events) {
-          transcripts = json.events.map((e) => ({
-            start: e.tStartMs / 1e3,
-            duration: e.dDurationMs / 1e3,
-            text: (e.segs ? e.segs.map((s) => s.utf8).join("") : "").replace(/\n/g, " ").trim()
-          })).filter((s) => s.text);
-        }
-      } catch (e) {
-        console.warn("[Subtitles] Failed to parse transcript string as JSON/XML.");
+    try {
+      const json = JSON.parse(transcriptData);
+      if (json.events) {
+        transcripts = json.events.map((e) => {
+          const rawText = e.segs ? e.segs.map((s) => s.utf8 || "").join("") : "";
+          const cleanText = decodeHtmlEntities(rawText.replace(/<[^>]+>/g, "")).replace(/\n/g, " ").trim();
+          return {
+            start: (e.tStartMs || 0) / 1e3,
+            duration: (e.dDurationMs || 0) / 1e3,
+            text: cleanText
+          };
+        }).filter((s) => s.text);
       }
+    } catch (jsonError) {
+      console.warn("[Subtitles] Failed to parse transcript string as JSON3. Falling back to XML regex.", jsonError);
+      const xmlUrl = selectedTrack.baseUrl.replace(/&fmt=[^&]+/, "") + "&fmt=srv3";
+      const xmlResponse = await client.fetch(xmlUrl, {
+        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+      });
+      const xmlData = await xmlResponse.text();
+      transcripts = parseXmlTranscriptRegex(xmlData);
+    }
+    if (client.cache && transcripts.length > 0) {
+      await client.cache.set(cacheKey, transcripts);
     }
     console.log(`[Subtitles] Retrieved ${transcripts.length} segments.`);
     return transcripts;
@@ -1379,6 +1560,16 @@ async function fetchSubtitlesFromYouTube(videoId, language = "en") {
     console.error(`[Subtitles] Error fetching subtitles for video ${videoId}:`, error);
     return [];
   }
+}
+
+// src/index.ts
+async function searchYouTube(query, options) {
+  const client = new Client(options);
+  return client.search(query, options);
+}
+async function getVideoPlayback(videoId, options) {
+  const client = new Client(options);
+  return client.getVideo(videoId);
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
@@ -1404,7 +1595,12 @@ async function fetchSubtitlesFromYouTube(videoId, language = "en") {
   findContinuationToken,
   getInnerTubeConfig,
   getSApiSidHash,
-  getSapisidFromCookie,
+  getSapisidFromCookieString,
+  getVideoPlayback,
   parseXmlTranscriptRegex,
-  scrapeTasteData
+  scrapeTasteData,
+  searchYouTube,
+  toPlainText,
+  toSRT,
+  toVTT
 });

@@ -4,34 +4,102 @@
  * Optimized for client-side environments with zero external dependencies.
  */
 
-import { getInnerTubeConfig } from './scraper.js';
-import type { InnerTubeConfig } from './scraper.js';
 import { SearchResult } from './search-result.js';
 import { Video } from './video.js';
 import { Playlist } from './playlist.js';
+
+export interface InnerTubeConfig {
+    apiKey: string | null;
+    clientVersion: string;
+    idToken: string | null;
+}
+
+export interface Cache {
+    get(key: string): Promise<any> | any;
+    set(key: string, value: any): Promise<void> | void;
+}
 
 export interface ClientOptions {
     apiKey?: string | null;
     clientVersion?: string;
     idToken?: string | null;
     cookie?: string;
+    fetch?: typeof globalThis.fetch;
+    cache?: Cache;
 }
 
-function getFallbackClientVersion(): string {
+export interface ClientProfile {
+    name: string;
+    clientName: string;
+    clientVersion: string;
+    clientNameHeader: string;
+    userAgent: string;
+    context: Record<string, any>;
+}
+
+export const CLIENT_PROFILES: ClientProfile[] = [
+    {
+        name: 'ios',
+        clientName: 'IOS',
+        clientVersion: '20.10.4',
+        clientNameHeader: '5',
+        userAgent: 'com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)',
+        context: {
+            deviceMake: 'Apple',
+            deviceModel: 'iPhone16,2',
+            platform: 'MOBILE',
+            osName: 'iOS',
+            osVersion: '18.3.2.22D82',
+        },
+    },
+    {
+        name: 'android_vr',
+        clientName: 'ANDROID_VR',
+        clientVersion: '1.62.20',
+        clientNameHeader: '28',
+        userAgent: 'com.google.android.apps.youtube.vr.oculus/1.62.20 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
+        context: {
+            deviceMake: 'Oculus',
+            deviceModel: 'Quest 3',
+            platform: 'MOBILE',
+            osName: 'Android',
+            osVersion: '12L',
+            androidSdkVersion: 32,
+        },
+    },
+    {
+        name: 'mweb',
+        clientName: 'MWEB',
+        clientVersion: '2.20251209.01.00',
+        clientNameHeader: '2',
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+        context: {
+            platform: 'MOBILE',
+            osName: 'iOS',
+            osVersion: '17.5.1',
+        },
+    }
+];
+
+export function getFallbackClientVersion(): string {
     const d = new Date();
     d.setDate(d.getDate() - 2);
     const yyyymmdd = d.toISOString().split('T')[0].replace(/-/g, '');
     return `2.${yyyymmdd}.00.00`;
 }
 
-function getSapisidFromCookieString(cookieString: string): string | null {
+export function getSapisidFromCookieString(cookieString?: string): string | null {
+    if (!cookieString && typeof document !== 'undefined') {
+        cookieString = document.cookie;
+    }
+    if (!cookieString) return null;
     const match = cookieString.match(/__Secure-3PAPISID=([^;]+)/) || 
                   cookieString.match(/__Secure-1PAPISID=([^;]+)/) ||
                   cookieString.match(/SAPISID=([^;]+)/);
     return match ? match[1] : null;
 }
 
-async function getSApiSidHash(sapisid: string, origin: string = 'https://www.youtube.com'): Promise<string | null> {
+export async function getSApiSidHash(sapisid: string, origin: string = 'https://www.youtube.com'): Promise<string | null> {
     if (!sapisid) return null;
     try {
         const timestamp = Math.floor(Date.now() / 1000);
@@ -49,22 +117,60 @@ async function getSApiSidHash(sapisid: string, origin: string = 'https://www.you
     }
 }
 
+let cachedApiKey: string | null = null;
+let cachedClientVersion: string | null = null;
+let cachedIdToken: string | null = null;
+
+export async function getInnerTubeConfig(injectedConfig?: Partial<InnerTubeConfig> | null, customFetch?: typeof globalThis.fetch): Promise<InnerTubeConfig> {
+    if (injectedConfig && injectedConfig.apiKey) {
+        cachedApiKey = injectedConfig.apiKey;
+        cachedClientVersion = injectedConfig.clientVersion || getFallbackClientVersion();
+        cachedIdToken = injectedConfig.idToken ?? null;
+        return { apiKey: cachedApiKey, clientVersion: cachedClientVersion, idToken: cachedIdToken };
+    }
+
+    if (cachedApiKey && cachedClientVersion) {
+        return { apiKey: cachedApiKey, clientVersion: cachedClientVersion, idToken: cachedIdToken };
+    }
+
+    try {
+        const fetchFn = customFetch || (typeof globalThis !== 'undefined' ? globalThis.fetch : fetch);
+        const response = await fetchFn('https://www.youtube.com', { credentials: 'include' });
+        const html = await response.text();
+
+        const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/);
+        const clientVersionMatch = html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/);
+        const idTokenMatch = html.match(/"ID_TOKEN":"([^"]+)"/);
+
+        if (apiKeyMatch && apiKeyMatch[1]) cachedApiKey = apiKeyMatch[1];
+        if (clientVersionMatch && clientVersionMatch[1]) cachedClientVersion = clientVersionMatch[1];
+        if (idTokenMatch && idTokenMatch[1]) cachedIdToken = idTokenMatch[1];
+    } catch (e) {
+        console.warn("[Client] Failed to extract InnerTube config from HTML", e);
+    }
+
+    if (!cachedClientVersion) cachedClientVersion = getFallbackClientVersion();
+
+    return { apiKey: cachedApiKey, clientVersion: cachedClientVersion, idToken: cachedIdToken };
+}
+
 export class Client {
     public apiKey: string | null = null;
     public clientVersion: string = '';
     public idToken: string | null = null;
     public cookie: string = '';
+    public fetch: typeof globalThis.fetch;
+    public cache?: Cache;
 
     constructor(options: ClientOptions = {}) {
-        this.cookie = options.cookie !== undefined 
-            ? options.cookie 
-            : '';
+        this.cookie = options.cookie !== undefined ? options.cookie : '';
+        this.fetch = options.fetch || (typeof globalThis !== 'undefined' ? globalThis.fetch : fetch);
+        this.cache = options.cache;
 
         let resolvedApiKey = options.apiKey !== undefined ? options.apiKey : null;
         let resolvedClientVersion = options.clientVersion !== undefined ? options.clientVersion : null;
         let resolvedIdToken = options.idToken !== undefined ? options.idToken : null;
 
-        // Inspect window.ytcfg if running in a browser page context
         if (typeof window !== 'undefined' && (window as any).ytcfg) {
             const ytcfg = (window as any).ytcfg;
             if (typeof ytcfg.get === 'function') {
@@ -83,24 +189,16 @@ export class Client {
         this.idToken = resolvedIdToken;
     }
 
-    /**
-     * Asynchronously resolves config parameters if apiKey is not set yet.
-     * Fetches and parses YouTube's home page HTML using the scraper logic.
-     */
     async ensureConfig(): Promise<void> {
-        if (this.apiKey) {
-            return;
-        }
-        const config = await getInnerTubeConfig();
+        if (this.apiKey) return;
+        const config = await getInnerTubeConfig(null, this.fetch);
         this.apiKey = config.apiKey;
-        if (config.clientVersion) {
-            this.clientVersion = config.clientVersion;
-        }
+        if (config.clientVersion) this.clientVersion = config.clientVersion;
         this.idToken = config.idToken;
     }
 
     /**
-     * Dispatches an authenticated or unauthenticated POST request to the specified InnerTube endpoint.
+     * Standard InnerTube request using the WEB client (useful for authenticated endpoints).
      */
     async request(endpoint: string, payload: any): Promise<any> {
         await this.ensureConfig();
@@ -118,9 +216,7 @@ export class Client {
             'X-Youtube-Client-Version': this.clientVersion,
         };
 
-        if (this.idToken) {
-            headers['X-Youtube-Identity-Token'] = this.idToken;
-        }
+        if (this.idToken) headers['X-Youtube-Identity-Token'] = this.idToken;
 
         const activeCookie = this.cookie || (typeof document !== 'undefined' ? document.cookie : '');
         if (activeCookie) {
@@ -128,9 +224,7 @@ export class Client {
             const sapisid = getSapisidFromCookieString(activeCookie);
             if (sapisid) {
                 const authHash = await getSApiSidHash(sapisid, 'https://www.youtube.com');
-                if (authHash) {
-                    headers['Authorization'] = `SAPISIDHASH ${authHash}`;
-                }
+                if (authHash) headers['Authorization'] = `SAPISIDHASH ${authHash}`;
             }
         }
 
@@ -149,7 +243,13 @@ export class Client {
             }
         };
 
-        const response = await fetch(url, {
+        const cacheKey = `yt_request_${cleanEndpoint}_${JSON.stringify(bodyPayload)}`;
+        if (this.cache) {
+            const cached = await this.cache.get(cacheKey);
+            if (cached) return cached;
+        }
+
+        const response = await this.fetch(url, {
             method: 'POST',
             headers: headers,
             body: JSON.stringify(requestBody),
@@ -160,44 +260,118 @@ export class Client {
             throw new Error(`InnerTube request failed with status: ${response.status}`);
         }
 
-        return response.json();
+        const data = await response.json();
+        if (this.cache) {
+            await this.cache.set(cacheKey, data);
+        }
+        return data;
     }
 
     /**
-     * Searches YouTube for the given query.
+     * Specialized request for the /player endpoint that loops through client profiles
+     * to bypass IP blocks or Captcha walls.
      */
+    async requestPlayerWithFallback(videoId: string): Promise<any> {
+        await this.ensureConfig();
+
+        const cacheKey = `yt_player_fallback_${videoId}`;
+        if (this.cache) {
+            const cached = await this.cache.get(cacheKey);
+            if (cached) return cached;
+        }
+
+        const url = `https://www.youtube.com/youtubei/v1/player?key=${this.apiKey}&prettyPrint=false`;
+        let firstPlayable: any = null;
+        const failures: string[] = [];
+
+        for (const profile of CLIENT_PROFILES) {
+            try {
+                const body = {
+                    videoId,
+                    context: {
+                        client: {
+                            clientName: profile.clientName,
+                            clientVersion: profile.clientVersion,
+                            hl: 'en',
+                            gl: 'US',
+                            ...profile.context
+                        },
+                        user: { lockedSafetyMode: false },
+                        request: { useSsl: true }
+                    },
+                    contentCheckOk: true,
+                    racyCheckOk: true
+                };
+
+                const response = await this.fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'User-Agent': profile.userAgent,
+                        'X-YouTube-Client-Name': profile.clientNameHeader,
+                        'X-YouTube-Client-Version': profile.clientVersion,
+                        'Origin': 'https://www.youtube.com'
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                if (!response.ok) {
+                    failures.push(`${profile.name}: ${response.status}`);
+                    continue;
+                }
+
+                const data = await response.json();
+                const status = data.playabilityStatus?.status;
+
+                if (status && status !== 'OK') {
+                    const reason = data.playabilityStatus?.reason;
+                    failures.push(`${profile.name}: ${status}${reason ? ` - ${reason}` : ''}`);
+                    continue;
+                }
+
+                if (!firstPlayable) firstPlayable = data;
+                
+                const tracks = data.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+                if (tracks && tracks.length > 0) {
+                    if (this.cache) await this.cache.set(cacheKey, data);
+                    return data; // Found tracks!
+                }
+                
+                failures.push(`${profile.name}: OK but no caption tracks`);
+            } catch (err: any) {
+                failures.push(`${profile.name}: ${err.message}`);
+            }
+        }
+
+        if (firstPlayable) {
+            if (this.cache) await this.cache.set(cacheKey, firstPlayable);
+            return firstPlayable;
+        }
+        
+        // If all fallbacks fail, fall back to standard WEB request
+        console.warn(`[Client] All mobile profiles failed, falling back to WEB profile. Attempts:\n${failures.join('\n')}`);
+        return this.request('player', { videoId, contentCheckOk: true, racyCheckOk: true });
+    }
+
     async search(query: string, options?: { type?: 'video' | 'playlist' | 'channel' | 'all' }): Promise<SearchResult> {
         const payload: any = { query };
-        if (options?.type === 'video') {
-            payload.params = 'EgIQAQ%3D%3D'; // Static base64 for video type
-        } else if (options?.type === 'playlist') {
-            payload.params = 'EgIQAw%3D%3D'; // Static base64 for playlist type
-        } else if (options?.type === 'channel') {
-            payload.params = 'EgIQAg%3D%3D'; // Static base64 for channel type
-        }
+        if (options?.type === 'video') payload.params = 'EgIQAQ%3D%3D';
+        else if (options?.type === 'playlist') payload.params = 'EgIQAw%3D%3D';
+        else if (options?.type === 'channel') payload.params = 'EgIQAg%3D%3D';
 
         const data = await this.request('search', payload);
         return new SearchResult(this, data);
     }
 
-    /**
-     * Gets metadata for a specific video.
-     */
     async getVideo(videoId: string): Promise<Video> {
-        // Fetch both player and next endpoints to get complete metadata
         const [playerData, nextData] = await Promise.all([
-            this.request('player', { videoId }),
+            this.requestPlayerWithFallback(videoId),
             this.request('next', { videoId })
         ]);
-        
-        // Merge to provide all details to the Video class
         const merged = { ...playerData, ...nextData };
         return new Video(this, merged);
     }
 
-    /**
-     * Gets metadata and videos for a specific playlist.
-     */
     async getPlaylist(playlistId: string): Promise<Playlist> {
         const browseId = playlistId.startsWith('VL') ? playlistId : `VL${playlistId}`;
         const data = await this.request('browse', { browseId });

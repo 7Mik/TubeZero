@@ -6,26 +6,35 @@
 
 export {
     fetchYtInitialData,
-    getSapisidFromCookie,
-    getSApiSidHash,
     extractVideoEntries,
-    getInnerTubeConfig,
     findContinuationToken,
     fetchInnerTubeFeed,
     scrapeTasteData
 } from './scraper.js';
 
+import { Client, getInnerTubeConfig, getSapisidFromCookieString, getSApiSidHash } from './client.js';
 export {
-    Client
-} from './client.js';
+    Client,
+    getInnerTubeConfig,
+    getSapisidFromCookieString,
+    getSApiSidHash
+};
 
 export type {
-    ClientOptions
+    ClientOptions,
+    InnerTubeConfig,
+    ClientProfile,
+    Cache
 } from './client.js';
+
+export {
+    toSRT,
+    toVTT,
+    toPlainText
+} from './formatters.js';
 
 export type {
     VideoEntry,
-    InnerTubeConfig,
     CustomPlaylist,
     CustomPlaylistData,
     TasteData
@@ -67,10 +76,41 @@ export type { ChannelInfo } from './video-compact.js';
 export { PlaylistCompact } from './playlist-compact.js';
 export { ChannelCompact } from './channel-compact.js';
 
-export { SearchResult } from './search-result.js';
+import { SearchResult } from './search-result.js';
+export { SearchResult };
 export type { SearchItem } from './search-result.js';
 
 export { BaseVideo } from './base-video.js';
-export { Video } from './video.js';
+export type { StreamingData, Format } from './base-video.js';
+import { Video } from './video.js';
+export { Video };
 
 export { Playlist, PlaylistVideos } from './playlist.js';
+
+/**
+ * Convenience helper to search YouTube without initializing a Client manually.
+ * @param query The search query string.
+ * @param options ClientOptions & Search filtering options.
+ * @returns SearchResult object with video/playlist/channel items.
+ */
+export async function searchYouTube(
+    query: string, 
+    options?: { type?: 'video' | 'playlist' | 'channel' | 'all' } & import('./client.js').ClientOptions
+): Promise<SearchResult> {
+    const client = new Client(options);
+    return client.search(query, options);
+}
+
+/**
+ * Convenience helper to get a video's metadata and playback/streaming data.
+ * @param videoId The video ID.
+ * @param options ClientOptions (e.g. for proxy/fetch customization).
+ * @returns Video object with streamingData populated.
+ */
+export async function getVideoPlayback(
+    videoId: string,
+    options?: import('./client.js').ClientOptions
+): Promise<Video> {
+    const client = new Client(options);
+    return client.getVideo(videoId);
+}
