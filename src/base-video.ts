@@ -3,6 +3,29 @@ import { Thumbnails, Thumbnail } from './thumbnails.js';
 import type { Client } from './client.js';
 import { ChannelInfo } from './video-compact.js';
 
+export interface Format {
+    itag: number;
+    url: string;
+    mimeType: string;
+    bitrate: number;
+    width?: number;
+    height?: number;
+    hasVideo: boolean;
+    hasAudio: boolean;
+    isLive: boolean;
+    contentLength?: string;
+    quality?: string;
+    qualityLabel?: string;
+    audioQuality?: string;
+    approxDurationMs?: string;
+}
+
+export interface StreamingData {
+    expiresInSeconds: string;
+    formats: Format[];
+    adaptiveFormats: Format[];
+}
+
 export class BaseVideo extends Base {
     public id: string;
     public title: string;
@@ -12,6 +35,7 @@ export class BaseVideo extends Base {
     public publishDate: string | null;
     public channel?: ChannelInfo;
     public isLive: boolean;
+    public streamingData?: StreamingData;
 
     constructor(client: Client, data: any) {
         super(client);
@@ -43,5 +67,30 @@ export class BaseVideo extends Base {
             name: videoDetails.author || videoDetails.ownerChannelName || '',
             id: videoDetails.channelId || videoDetails.externalChannelId || ''
         };
+
+        if (data.streamingData) {
+            const parseFormat = (f: any): Format => ({
+                itag: f.itag,
+                url: f.url,
+                mimeType: f.mimeType,
+                bitrate: f.bitrate,
+                width: f.width,
+                height: f.height,
+                hasVideo: !!f.width || f.mimeType?.includes('video/'),
+                hasAudio: !!f.audioBitrate || !!f.audioChannels || f.mimeType?.includes('audio/') || (f.mimeType?.includes('video/') && (f.mimeType?.includes('mp4a') || f.mimeType?.includes('opus') || f.mimeType?.includes('vorbis') || f.mimeType?.includes('ec-3'))),
+                isLive: !!data.videoDetails?.isLiveContent,
+                contentLength: f.contentLength,
+                quality: f.quality,
+                qualityLabel: f.qualityLabel,
+                audioQuality: f.audioQuality,
+                approxDurationMs: f.approxDurationMs
+            });
+
+            this.streamingData = {
+                expiresInSeconds: data.streamingData.expiresInSeconds || '0',
+                formats: (data.streamingData.formats || []).map(parseFormat),
+                adaptiveFormats: (data.streamingData.adaptiveFormats || []).map(parseFormat)
+            };
+        }
     }
 }

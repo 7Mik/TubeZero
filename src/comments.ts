@@ -4,8 +4,8 @@
  * Works client-side (Chrome extensions, desktop apps, or CORS-proxied environments).
  */
 
-import { getInnerTubeConfig, getSapisidFromCookie, getSApiSidHash } from './scraper.js';
-import type { InnerTubeConfig } from './scraper.js';
+import { getInnerTubeConfig, getSapisidFromCookieString as getSapisidFromCookie, getSApiSidHash } from './client.js';
+import type { InnerTubeConfig } from './client.js';
 
 export interface CommentEntry {
     author: string;

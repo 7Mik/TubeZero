@@ -1,3 +1,6 @@
 /node_modules
 NPMguide.md
 benchmark_results/
+/temp_comparison_repos
+/dist
+dist/
