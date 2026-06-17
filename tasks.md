@@ -113,13 +113,13 @@ Before mapping the API, we must evaluate all features against **TubeVanilla's th
 * [x] Implement **`Client.getPlaylist()`** returning **`Playlist`** with **`PlaylistVideos`**.
 
 ### 🏃 Sprint 3: Comments, Captions, and Watch-Next (Target: Week 3)
-* [ ] Implement watch page connections: **`VideoRelated`** and **`VideoCaptions`**.
-* [ ] Implement **`VideoComments`** and **`CommentReplies`** using our light heuristic JSON scanner.
+* [x] Implement watch page connections: **`VideoRelated`** and **`VideoCaptions`**.
+* [x] Implement **`VideoComments`** and **`CommentReplies`** using our light heuristic JSON scanner.
 
 ### 🏃 Sprint 4: Channel Tabs, Live streams & Live Chat (Target: Week 4)
-* [ ] Extend channel queries into **`Channel`** (banners, about section).
-* [ ] Implement tab continuation lists (**`ChannelVideos`**, **`ChannelShorts`**, **`ChannelLive`**, **`ChannelPlaylists`**).
-* [ ] Implement live stream support (**`LiveVideo`** and a fetch-based poll loop for **`Chat`**).
+* [x] Extend channel queries into **`Channel`** (banners, about section).
+* [x] Implement tab continuation lists (**`ChannelVideos`**, **`ChannelShorts`**, **`ChannelLive`**, **`ChannelPlaylists`**).
+* [x] Implement live stream support (**`LiveVideo`** and a fetch-based poll loop for **`Chat`**).
 
 ### 🏃 Sprint 5: YouTube Music Client (Target: Week 5)
 * [ ] Implement **`MusicClient`** (using the `WEB_REMIX` payload headers).

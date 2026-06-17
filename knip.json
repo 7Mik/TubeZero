@@ -1,0 +1,15 @@
+{
+  "$schema": "https://unpkg.com/knip@next/schema.json",
+  "entry": [
+    "src/index.ts!",
+    "benchmark.mjs",
+    "test-all-calls.mjs",
+    "test-compare-benchmark.mjs"
+  ],
+  "project": [
+    "src/**/*.ts"
+  ],
+  "ignoreDependencies": [
+    "tsx"
+  ]
+}

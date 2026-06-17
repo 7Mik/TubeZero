@@ -86,6 +86,15 @@ import { Video } from './video.js';
 export { Video };
 
 export { Playlist, PlaylistVideos } from './playlist.js';
+export { BaseChannel, ChannelVideos, ChannelShorts, ChannelLive, ChannelPlaylists, ChannelPosts } from './base-channel.js';
+export { Channel } from './channel.js';
+export { Comment, CommentReplies, VideoComments } from './comment.js';
+export { MixPlaylist } from './mix-playlist.js';
+export { LiveVideo } from './live-video.js';
+export { Caption, CaptionLanguage } from './caption.js';
+export { Chat } from './chat.js';
+export { VideoCaptions } from './video-captions.js';
+export { VideoRelated } from './video-related.js';
 
 /**
  * Convenience helper to search YouTube without initializing a Client manually.
