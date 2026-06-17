@@ -1,5 +1,7 @@
 # TubeZero
 
+📖 **[Read the Documentation](https://7Mik.github.io/TubeZero/)**
+
 A modular collection of JavaScript functions designed to scrape and reverse-engineer data from YouTube using its private internal API (**InnerTube**). This library is built to be ultra-lightweight, free of heavy external dependencies, and optimized for client-side environments (such as browser extensions or desktop applications).
 
 ---
