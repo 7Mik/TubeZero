@@ -32,7 +32,7 @@ const config: Config = {
         docs: {
           routeBasePath: '/', // Serve the docs at the site's root
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/7Mik/TubeZero/tree/developer/docs/',
+          editUrl: 'https://github.com/7Mik/TubeZero/tree/main/docs/',
         },
         blog: false, // Disable the blog
         theme: {

@@ -3,7 +3,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches:
-      - developer # Deploys automatically when pushed to developer branch
+      - main # Deploys automatically when pushed to main branch
 
 permissions:
   contents: read
