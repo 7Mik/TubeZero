@@ -57,7 +57,7 @@ export class PlaylistCompact extends Base {
                     if (text.includes('video')) {
                         const cleaned = text.replace(/[^0-9]/g, '');
                         if (cleaned) videoCountNum = parseInt(cleaned, 10);
-                    } else {
+                    } else if (!cName) {
                         cName = text;
                     }
                 }

@@ -61,7 +61,7 @@ const extraComments = await video.comments.next(50);
 console.log(extraComments);
 ```
 
-> **Note:** Fetching comment replies is currently unsupported by the YouTube InnerTube API parsing in TubeVanilla. The `.replies` property is present but will not fetch actual replies due to missing continuation payload logic.
+> **Note:** Fetching comment replies is currently unsupported by the YouTube InnerTube API parsing in TubeZero. The `.replies` property is present but will not fetch actual replies due to missing continuation payload logic.
 
 ### Does it work in browser extensions (Manifest V3)?
 
