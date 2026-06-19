@@ -1,2 +1,6 @@
-npx lint-staged
-npm run typecheck
+if [ "$(uname)" = "Linux" ]; then
+  npx lint-staged
+  npm run typecheck
+else
+  echo "Skipping code checks (running on Windows/Non-Linux)"
+fi

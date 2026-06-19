@@ -5,8 +5,12 @@ export interface Thumbnail {
 }
 
 export class Thumbnails extends Array<Thumbnail> {
-    constructor(list: Thumbnail[] = []) {
-        super(...list);
+    constructor(list: Thumbnail[] | number = []) {
+        if (typeof list === 'number') {
+            super(list);
+        } else {
+            super(...list);
+        }
     }
 
     public get min(): string | undefined {

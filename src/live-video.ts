@@ -10,7 +10,8 @@ export class LiveVideo extends BaseVideo {
     private chatRequestPoolingTimeout: any = null;
     private timeoutMs: number = 0;
     private isChatPlaying: boolean = false;
-    private chatQueue: Chat[] = [];
+    private chatQueue: Set<string> = new Set();
+    private pollSessionId: number = 0;
     private listeners: Record<string, Function[]> = {};
 
     constructor(client: Client, data?: any) {
@@ -45,7 +46,7 @@ export class LiveVideo extends BaseVideo {
         const runText = data.response?.contents?.twoColumnWatchNextResults?.results?.results?.contents?.[0]?.videoPrimaryInfoRenderer?.viewCount?.videoViewCountRenderer?.viewCount?.runs?.map((r: any) => r.text).join(' ');
         
         const countStr = runText || videoDetails.viewCount || '0';
-        this.watchingCount = parseInt(countStr.replace(/[^0-9]/g, '') || '0', 10);
+        this.watchingCount = parseInt(String(countStr).replace(/[^0-9]/g, '') || '0', 10);
 
         // Chat continuation
         this.chatContinuation = data.response?.contents?.twoColumnWatchNextResults?.conversationBar?.liveChatRenderer?.continuations?.[0]?.reloadContinuationData?.continuation || '';
@@ -57,24 +58,28 @@ export class LiveVideo extends BaseVideo {
         if (this.isChatPlaying) return;
         this.delay = delay;
         this.isChatPlaying = true;
-        this.pollChatContinuation();
+        const sessionId = ++this.pollSessionId;
+        this.pollChatContinuation(sessionId);
     }
 
     public stopChat(): void {
-        if (!this.chatRequestPoolingTimeout) return;
         this.isChatPlaying = false;
-        clearTimeout(this.chatRequestPoolingTimeout);
+        this.pollSessionId++;
+        if (this.chatRequestPoolingTimeout) {
+            clearTimeout(this.chatRequestPoolingTimeout);
+            this.chatRequestPoolingTimeout = null;
+        }
     }
 
-    private async pollChatContinuation(): Promise<void> {
-        if (!this.isChatPlaying || !this.chatContinuation) return;
+    private async pollChatContinuation(sessionId: number): Promise<void> {
+        if (!this.isChatPlaying || !this.chatContinuation || sessionId !== this.pollSessionId) return;
 
         try {
             const response = await this.client.request('live_chat/get_live_chat', {
                 continuation: this.chatContinuation
             });
 
-            if (!response?.continuationContents?.liveChatContinuation) return;
+            if (!response?.continuationContents?.liveChatContinuation || sessionId !== this.pollSessionId) return;
 
             const chatCont = response.continuationContents.liveChatContinuation;
             const actions = chatCont.actions || [];
@@ -83,27 +88,38 @@ export class LiveVideo extends BaseVideo {
                 const item = action.addChatItemAction?.item?.liveChatTextMessageRenderer;
                 if (item) {
                     const chat = new Chat(this.client).load(item);
-                    if (this.chatQueue.some(c => c.id === chat.id)) continue;
-                    this.chatQueue.push(chat);
+                    if (this.chatQueue.has(chat.id)) continue;
+                    this.chatQueue.add(chat.id);
+                    if (this.chatQueue.size > 500) {
+                        const firstKey = this.chatQueue.keys().next().value;
+                        if (firstKey !== undefined) {
+                            this.chatQueue.delete(firstKey);
+                        }
+                    }
 
                     const timeout = (chat.timestamp / 1000) - (Date.now() - this.delay);
-                    setTimeout(() => this.emit('chat', chat), Math.max(0, timeout));
+                    setTimeout(() => {
+                        if (sessionId === this.pollSessionId) {
+                            this.emit('chat', chat);
+                        }
+                    }, Math.max(0, timeout));
                 }
             }
 
             const continuation = chatCont.continuations?.[0];
             const continuationData = continuation?.timedContinuationData || continuation?.invalidationContinuationData;
             
-            if (continuationData) {
+            if (continuationData && sessionId === this.pollSessionId) {
                 this.timeoutMs = continuationData.timeoutMs || 5000;
                 this.chatContinuation = continuationData.continuation;
                 
-                this.chatRequestPoolingTimeout = setTimeout(() => this.pollChatContinuation(), this.timeoutMs);
+                this.chatRequestPoolingTimeout = setTimeout(() => this.pollChatContinuation(sessionId), this.timeoutMs);
             }
         } catch (e) {
             console.error('[LiveVideo] Error polling live chat:', e);
-            // Retry after 5 seconds
-            this.chatRequestPoolingTimeout = setTimeout(() => this.pollChatContinuation(), 5000);
+            if (sessionId === this.pollSessionId) {
+                this.chatRequestPoolingTimeout = setTimeout(() => this.pollChatContinuation(sessionId), 5000);
+            }
         }
     }
 }

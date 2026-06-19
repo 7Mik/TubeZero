@@ -85,8 +85,8 @@ export class Video extends BaseVideo {
                         commentToken = item.continuationItemRenderer.continuationEndpoint.continuationCommand.token;
                         break;
                     }
-                    if (item.commentsEntryPointHeaderRenderer?.content?.commentsEntryPointHeaderRenderer?.simpleText?.runs?.[0]?.navigationEndpoint?.continuationCommand?.token) {
-                        commentToken = item.commentsEntryPointHeaderRenderer.content.commentsEntryPointHeaderRenderer.simpleText.runs[0].navigationEndpoint.continuationCommand.token;
+                    if (item.commentsEntryPointHeaderRenderer?.content?.commentsEntryPointHeaderRenderer?.headerText?.runs?.[0]?.navigationEndpoint?.continuationCommand?.token) {
+                        commentToken = item.commentsEntryPointHeaderRenderer.content.commentsEntryPointHeaderRenderer.headerText.runs[0].navigationEndpoint.continuationCommand.token;
                         break;
                     }
                 }
