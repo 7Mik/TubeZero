@@ -1,7 +1,9 @@
 import { Base } from './base.js';
-import { Thumbnails, Thumbnail } from './thumbnails.js';
+import { Thumbnails } from './thumbnails.js';
 import type { Client } from './client.js';
-import { ChannelInfo } from './video-compact.js';
+import { BaseChannel } from './base-channel.js';
+import { VideoRelated, parseRelatedData } from './video-related.js';
+import { VideoCaptions } from './video-captions.js';
 
 export interface Format {
     itag: number;
@@ -32,12 +34,19 @@ export class BaseVideo extends Base {
     public description: string;
     public thumbnails: Thumbnails;
     public viewCount: number | null;
-    public publishDate: string | null;
-    public channel?: ChannelInfo;
-    public isLive: boolean;
+    public uploadDate: string | null;
+    public channel: BaseChannel | null;
+    public channels: BaseChannel[] | null;
+    public isLiveContent: boolean;
+    public likeCount: number | null;
+    public tags: string[];
+    public formats: any[];
+    public adaptiveFormats: any[];
     public streamingData?: StreamingData;
+    public related: VideoRelated;
+    public captions: VideoCaptions | null;
 
-    constructor(client: Client, data: any) {
+    constructor(client: Client, data?: any) {
         super(client);
 
         this.id = '';
@@ -45,30 +54,82 @@ export class BaseVideo extends Base {
         this.description = '';
         this.thumbnails = new Thumbnails([]);
         this.viewCount = null;
-        this.publishDate = null;
-        this.isLive = false;
+        this.uploadDate = null;
+        this.channel = null;
+        this.channels = null;
+        this.isLiveContent = false;
+        this.likeCount = null;
+        this.tags = [];
+        this.formats = [];
+        this.adaptiveFormats = [];
+        this.related = new VideoRelated(client, this as any);
+        this.captions = null;
 
-        this.parse(data);
+        if (data) {
+            this.parse(data);
+        }
     }
 
     protected parse(data: any): void {
-        const videoDetails = data.videoDetails || data.microformat?.playerMicroformatRenderer || {};
+        const videoDetails = data.videoDetails || {};
+        const playerResponse = data.playerResponse || data;
+        const watchResponse = data.response || {};
+
+        this.id = videoDetails.videoId || playerResponse.videoDetails?.videoId || '';
+        this.title = videoDetails.title || playerResponse.videoDetails?.title || '';
+        this.description = videoDetails.shortDescription || playerResponse.videoDetails?.shortDescription || '';
         
-        this.id = videoDetails.videoId || '';
-        this.title = typeof videoDetails.title === 'string' ? videoDetails.title : (videoDetails.title?.simpleText || videoDetails.title?.runs?.[0]?.text || '');
-        this.description = videoDetails.shortDescription || videoDetails.description?.simpleText || videoDetails.description?.runs?.map((r: any) => r.text).join('') || '';
-        this.thumbnails = new Thumbnails(videoDetails.thumbnail?.thumbnails || []);
-        this.viewCount = videoDetails.viewCount ? parseInt(videoDetails.viewCount, 10) : null;
-        this.isLive = videoDetails.isLiveContent || false;
-        this.publishDate = videoDetails.publishDate || null;
+        const thumbs = videoDetails.thumbnail?.thumbnails || playerResponse.videoDetails?.thumbnail?.thumbnails || [];
+        this.thumbnails = new Thumbnails(thumbs);
+        
+        this.viewCount = videoDetails.viewCount ? parseInt(videoDetails.viewCount, 10) : (playerResponse.videoDetails?.viewCount ? parseInt(playerResponse.videoDetails.viewCount, 10) : null);
+        this.isLiveContent = videoDetails.isLiveContent || playerResponse.videoDetails?.isLiveContent || false;
 
-        // Parse channel info if available in microformat or videoDetails
-        this.channel = {
-            name: videoDetails.author || videoDetails.ownerChannelName || '',
-            id: videoDetails.channelId || videoDetails.externalChannelId || ''
-        };
+        // Parse channel / author
+        const authorId = videoDetails.channelId || playerResponse.videoDetails?.channelId || '';
+        const authorName = videoDetails.author || playerResponse.videoDetails?.author || '';
+        if (authorId || authorName) {
+            this.channel = new BaseChannel(this.client, {
+                channelId: authorId,
+                title: { simpleText: authorName }
+            });
+        }
 
-        if (data.streamingData) {
+        // Parse like count
+        const watchNextResults = watchResponse.contents?.twoColumnWatchNextResults || data.contents?.twoColumnWatchNextResults;
+        const primaryInfo = watchNextResults?.results?.results?.contents?.find((c: any) => c.videoPrimaryInfoRenderer)?.videoPrimaryInfoRenderer;
+        
+        if (primaryInfo) {
+            this.uploadDate = primaryInfo.dateText?.simpleText || primaryInfo.dateText?.runs?.[0]?.text || null;
+            
+            // Like button parsing
+            const topLevelButtons = primaryInfo.videoActions?.menuRenderer?.topLevelButtons || [];
+            let likeButtonText = '';
+            for (const button of topLevelButtons) {
+                const renderer = button.toggleButtonRenderer || button.buttonRenderer;
+                if (renderer) {
+                    const label = renderer.defaultText?.accessibility?.accessibilityData?.accessibilityData || renderer.accessibilityData?.accessibilityData?.label;
+                    if (label && label.toLowerCase().includes('like')) {
+                        likeButtonText = label;
+                        break;
+                    }
+                }
+            }
+            if (likeButtonText) {
+                this.likeCount = parseInt(likeButtonText.replace(/[^0-9]/g, '') || '0', 10) || null;
+            }
+
+            // Tags
+            const runs = primaryInfo.superTitleLink?.runs || [];
+            this.tags = runs.map((r: any) => r.text.trim()).filter((t: string) => t.startsWith('#'));
+        }
+
+        // Parse streaming data
+        const streamingData = data.streamingData || playerResponse.streamingData;
+        if (streamingData) {
+            this.formats = streamingData.formats || [];
+            this.adaptiveFormats = streamingData.adaptiveFormats || [];
+            
             const parseFormat = (f: any): Format => ({
                 itag: f.itag,
                 url: f.url,
@@ -78,7 +139,7 @@ export class BaseVideo extends Base {
                 height: f.height,
                 hasVideo: !!f.width || f.mimeType?.includes('video/'),
                 hasAudio: !!f.audioBitrate || !!f.audioChannels || f.mimeType?.includes('audio/') || (f.mimeType?.includes('video/') && (f.mimeType?.includes('mp4a') || f.mimeType?.includes('opus') || f.mimeType?.includes('vorbis') || f.mimeType?.includes('ec-3'))),
-                isLive: !!data.videoDetails?.isLiveContent,
+                isLive: this.isLiveContent,
                 contentLength: f.contentLength,
                 quality: f.quality,
                 qualityLabel: f.qualityLabel,
@@ -87,10 +148,25 @@ export class BaseVideo extends Base {
             });
 
             this.streamingData = {
-                expiresInSeconds: data.streamingData.expiresInSeconds || '0',
-                formats: (data.streamingData.formats || []).map(parseFormat),
-                adaptiveFormats: (data.streamingData.adaptiveFormats || []).map(parseFormat)
+                expiresInSeconds: streamingData.expiresInSeconds || '0',
+                formats: this.formats.map(parseFormat),
+                adaptiveFormats: this.adaptiveFormats.map(parseFormat)
             };
         }
+
+        // Related videos
+        const relatedRes = parseRelatedData(this.client, data);
+        this.related.items = relatedRes.items;
+        this.related.continuation = relatedRes.continuation;
+
+        // Captions
+        const captionTracks = playerResponse.captions?.playerCaptionsTracklistRenderer;
+        if (captionTracks) {
+            this.captions = new VideoCaptions({ video: this as any, client: this.client }).load(captionTracks);
+        }
+    }
+
+    public get upNext(): any {
+        return this.related.items[0] || null;
     }
 }

@@ -4,30 +4,29 @@ export interface Thumbnail {
     height: number;
 }
 
-export class Thumbnails {
-    public list: Thumbnail[];
-
-    constructor(list: Thumbnail[]) {
-        this.list = list;
+export class Thumbnails extends Array<Thumbnail> {
+    constructor(list: Thumbnail[] | number = []) {
+        if (typeof list === 'number') {
+            super(list);
+        } else {
+            super(...list);
+        }
     }
 
-    public getBestResolution(): Thumbnail | undefined {
-        if (!this.list || this.list.length === 0) {
-            return undefined;
-        }
+    public get min(): string | undefined {
+        return this[0]?.url;
+    }
 
-        let best: Thumbnail = this.list[0];
-        let maxResolution = (best.width || 0) * (best.height || 0);
+    public get best(): string | undefined {
+        return this.reduce((prev: Thumbnail | undefined, curr: Thumbnail) => {
+            if (!prev) return curr;
+            return (prev.width * prev.height > curr.width * curr.height) ? prev : curr;
+        }, undefined)?.url;
+    }
 
-        for (let i = 1; i < this.list.length; i++) {
-            const thumb = this.list[i];
-            const resolution = (thumb.width || 0) * (thumb.height || 0);
-            if (resolution > maxResolution) {
-                maxResolution = resolution;
-                best = thumb;
-            }
-        }
-
-        return best;
+    public load(thumbnails: Thumbnail[]): Thumbnails {
+        this.length = 0;
+        this.push(...thumbnails);
+        return this;
     }
 }

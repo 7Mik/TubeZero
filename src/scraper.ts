@@ -57,11 +57,11 @@ export async function fetchYtInitialData(url: string): Promise<any> {
     return null;
 }
 
-export function getSapisidFromCookie(): string | null {
+function getSapisidFromCookie(): string | null {
     return getSapisidFromCookieString('');
 }
 
-export { getSApiSidHash };
+
 
 /**
  * Recursively scans a JSON object to extract video entries { title, channel }.
@@ -162,7 +162,7 @@ export function extractVideoEntries(data: any): VideoEntry[] {
     return entries;
 }
 
-export { getInnerTubeConfig };
+
 
 /**
  * Recursively searches for the continuation token in an InnerTube response.

@@ -4,9 +4,13 @@
  * Optimized for client-side environments with zero external dependencies.
  */
 
-import { SearchResult } from './search-result.js';
+import { SearchResult, SearchItem } from './search-result.js';
 import { Video } from './video.js';
 import { Playlist } from './playlist.js';
+import { Channel } from './channel.js';
+import { MixPlaylist } from './mix-playlist.js';
+import { LiveVideo } from './live-video.js';
+import { Caption } from './caption.js';
 
 export interface InnerTubeConfig {
     apiKey: string | null;
@@ -37,7 +41,7 @@ export interface ClientProfile {
     context: Record<string, any>;
 }
 
-export const CLIENT_PROFILES: ClientProfile[] = [
+const CLIENT_PROFILES: ClientProfile[] = [
     {
         name: 'ios',
         clientName: 'IOS',
@@ -81,7 +85,7 @@ export const CLIENT_PROFILES: ClientProfile[] = [
     }
 ];
 
-export function getFallbackClientVersion(): string {
+function getFallbackClientVersion(): string {
     const d = new Date();
     d.setDate(d.getDate() - 2);
     const yyyymmdd = d.toISOString().split('T')[0].replace(/-/g, '');
@@ -381,18 +385,41 @@ export class Client {
         return new SearchResult(this, data);
     }
 
-    async getVideo(videoId: string): Promise<Video> {
+    async findOne(query: string, options?: { type?: 'video' | 'playlist' | 'channel' | 'all' }): Promise<SearchItem | undefined> {
+        const result = await this.search(query, options);
+        return result.items[0] || undefined;
+    }
+
+    async getVideo(videoId: string): Promise<Video | LiveVideo> {
         const [playerData, nextData] = await Promise.all([
             this.requestPlayerWithFallback(videoId),
             this.request('next', { videoId })
         ]);
         const merged = { ...playerData, ...nextData };
+        if (playerData.playabilityStatus?.liveStreamability) {
+            return new LiveVideo(this, merged);
+        }
         return new Video(this, merged);
     }
 
-    async getPlaylist(playlistId: string): Promise<Playlist> {
+    async getPlaylist(playlistId: string): Promise<Playlist | MixPlaylist> {
+        if (playlistId.startsWith('RD')) {
+            const data = await this.request('next', { playlistId });
+            return new MixPlaylist(this, data);
+        }
         const browseId = playlistId.startsWith('VL') ? playlistId : `VL${playlistId}`;
         const data = await this.request('browse', { browseId });
         return new Playlist(this, data);
+    }
+
+    async getChannel(channelId: string): Promise<Channel | undefined> {
+        const data = await this.request('browse', { browseId: channelId });
+        if (data.error) return undefined;
+        return new Channel(this, data);
+    }
+
+    async getVideoTranscript(videoId: string, languageCode?: string): Promise<Caption[] | undefined> {
+        const video = await this.getVideo(videoId);
+        return video.captions?.get(languageCode);
     }
 }

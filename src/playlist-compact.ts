@@ -41,6 +41,30 @@ export class PlaylistCompact extends Base {
                     name: run.text
                 };
             }
+        } else if (data.lockupViewModel && data.lockupViewModel.contentId && data.lockupViewModel.contentType === "LOCKUP_CONTENT_TYPE_PLAYLIST") {
+            const model = data.lockupViewModel;
+            playlistId = model.contentId;
+            const meta = model.metadata?.lockupMetadataViewModel;
+            titleText = meta?.title?.content || '';
+            const img = model.image?.lockupImageViewModel?.image;
+            if (img && img.sources) thumbnails = img.sources;
+            
+            const rows = meta?.metadata?.contentMetadataViewModel?.metadataRows || [];
+            let cName = '';
+            for (const row of rows) {
+                for (const part of row.metadataParts || []) {
+                    const text = part.text?.content || '';
+                    if (text.includes('video')) {
+                        const cleaned = text.replace(/[^0-9]/g, '');
+                        if (cleaned) videoCountNum = parseInt(cleaned, 10);
+                    } else if (!cName) {
+                        cName = text;
+                    }
+                }
+            }
+            if (cName) {
+                channelObj = { name: cName.replace(/•/g, '').trim() };
+            }
         }
 
         this.id = playlistId;

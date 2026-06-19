@@ -21,7 +21,19 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "dev": "tsup src/index.ts --format esm --watch",
-    "test": "node compare-tests.mjs"
+    "test": "node compare-tests.mjs",
+    "lint": "eslint src compare-tests.mjs benchmark.mjs test-all-calls.mjs test-compare-benchmark.mjs",
+    "typecheck": "tsc --noEmit",
+    "knip": "knip",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "eslint --fix"
+    ],
+    "*.mjs": [
+      "eslint --fix"
+    ]
   },
   "keywords": [
     "youtube",
@@ -46,6 +58,14 @@
   "author": "",
   "license": "PolyForm-Small-Business-1.0.0",
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@typescript-eslint/eslint-plugin": "^8.61.1",
+    "@typescript-eslint/parser": "^8.61.1",
+    "eslint": "^9.39.4",
+    "globals": "^17.6.0",
+    "husky": "^9.1.7",
+    "knip": "^6.17.1",
+    "lint-staged": "^17.0.7",
     "tsup": "^8.0.2",
     "tsx": "^4.7.1",
     "typescript": "^5.3.3",
