@@ -1,6 +1,6 @@
 # TubeZero
 
-📖 **[Read the Documentation](https://7Mik.github.io/TubeZero/)**
+📖 **[Full API Documentation & Snippets](https://7Mik.github.io/TubeZero/)**
 
 A modular collection of JavaScript functions designed to scrape and reverse-engineer data from YouTube using its private internal API (**InnerTube**). This library is built to be ultra-lightweight, free of heavy external dependencies, and optimized for client-side environments (such as browser extensions or desktop applications).
 
@@ -45,50 +45,54 @@ Add `"type": "module"` in your `package.json` to enable loading of ES modules.
 
 ## 💻 Usage Examples
 
-### 1. Initialization and Fetching Taste Data (History and Likes)
-Retrieve the logged-in user's viewing history, liked videos, "Watch Later" list, or custom playlists.
+The primary way to interact with TubeZero is through the `Client` class. For a full list of examples, check out the **[Documentation](https://7Mik.github.io/TubeZero/)**.
+
+### 1. Initialization and Searching
+Search for videos, playlists, or channels.
 
 ```javascript
-import { scrapeTasteData } from './index.js';
+import { Client } from 'tubezero';
 
-// When run in a browser extension, SAPISID cookies are read automatically
-const userFeeds = await scrapeTasteData(null, [
-    { url: "https://www.youtube.com/playlist?list=PLtbcYJeD7QZ34kS_L8H-lV7J8xT6rU0k_" } // Optional custom playlist
-]);
+const youtube = new Client();
 
-console.log("History:", userFeeds.historyEntries);
-console.log("Likes:", userFeeds.likesEntries);
-console.log("Watch Later:", userFeeds.wlEntries);
-console.log("Custom Playlists:", userFeeds.customPlaylistsData);
+const results = await youtube.search("Rick Astley", { type: "video" });
+console.log(results.items[0].title); // "Rick Astley - Never Gonna Give You Up"
 ```
 
-### 2. Fetching Video Comments
-Retrieve comments for a specific video with automatic pagination.
+### 2. Fetching a Video and its Comments
+Retrieve full metadata, streaming data, and comments for a video.
 
 ```javascript
-import { fetchCommentsFromYouTube } from './index.js';
+import { Client } from 'tubezero';
 
-const videoId = "dQw4w9WgXcQ";
-const maxComments = 100;
+const youtube = new Client();
+const video = await youtube.getVideo("dQw4w9WgXcQ");
 
-const comments = await fetchCommentsFromYouTube(videoId, maxComments);
+console.log(`Title: ${video.title}`);
+console.log(`Views: ${video.viewCount}`);
+
+// Load the first page of comments
+const comments = await video.comments.next();
 comments.forEach(c => {
-    console.log(`[${c.author}] (${c.likeCount} likes): ${c.text}`);
+    console.log(`[${c.author.name}]: ${c.content}`);
 });
 ```
 
-### 3. Fetching Subtitles (Transcripts)
-Download and parse video transcripts in the desired language with automatic fallbacks.
+### 3. Fetching a Playlist
+Retrieve a playlist and paginate through its videos.
 
 ```javascript
-import { fetchSubtitlesFromYouTube } from './index.js';
+import { Client } from 'tubezero';
 
-const videoId = "dQw4w9WgXcQ";
-const transcript = await fetchSubtitlesFromYouTube(videoId, "en"); // Searches for English, falls back to automatic captions or first available track
+const youtube = new Client();
+const playlist = await youtube.getPlaylist("PLtbcYJeD7QZ34kS_L8H-lV7J8xT6rU0k_");
 
-transcript.forEach(segment => {
-    console.log(`[${segment.start}s - ${segment.duration}s]: ${segment.text}`);
-});
+// Load all pages
+while (playlist.videos.hasMore) {
+    await playlist.videos.next();
+}
+
+console.log(`Total videos loaded: ${playlist.videos.items.length}`);
 ```
 
 ---

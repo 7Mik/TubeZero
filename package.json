@@ -1,6 +1,6 @@
 {
   "name": "tubezero",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Zero-dependency, ultra-lightweight YouTube InnerTube client optimized for client-side environments, browser extensions, and hybrid apps.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -56,7 +56,7 @@
     "lightweight-scraper"
   ],
   "author": "",
-  "license": "PolyForm-Small-Business-1.0.0",
+  "license": "AGPL-3.0-only",
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@typescript-eslint/eslint-plugin": "^8.61.1",
