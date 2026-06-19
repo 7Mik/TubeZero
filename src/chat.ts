@@ -25,8 +25,8 @@ export class Chat extends Base {
         
         this.author = new BaseChannel(this.client, {
             channelId: authorExternalChannelId,
-            title: authorName,
-            thumbnail: authorPhoto
+            title: { simpleText: authorName },
+            thumbnail: { thumbnails: authorPhoto }
         });
 
         return this;

@@ -39,8 +39,10 @@ console.log(videos.items); // Combined first and second page items
 ```javascript
 const playlist = await youtube.getPlaylist(PLAYLIST_ID);
 
-// Pass 0 to next() to load all continuation pages until none are left
-await playlist.videos.next(0);
+// Load pages until none are left
+while (playlist.videos.hasMore) {
+    await playlist.videos.next();
+}
 
 console.log(playlist.videos.items); // All videos in the playlist
 ```
@@ -59,17 +61,7 @@ const extraComments = await video.comments.next(50);
 console.log(extraComments);
 ```
 
-### How to get replies for a comment?
-
-```javascript
-const comments = await video.comments.next(5);
-const comment = comments[0];
-
-if (comment && comment.replyCount > 0) {
-    const replies = await comment.replies.next();
-    console.log(replies);
-}
-```
+> **Note:** Fetching comment replies is currently unsupported by the YouTube InnerTube API parsing in TubeVanilla. The `.replies` property is present but will not fetch actual replies due to missing continuation payload logic.
 
 ### Does it work in browser extensions (Manifest V3)?
 

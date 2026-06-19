@@ -90,7 +90,8 @@ export { BaseChannel, ChannelVideos, ChannelShorts, ChannelLive, ChannelPlaylist
 export { Channel } from './channel.js';
 export { Comment, CommentReplies, VideoComments } from './comment.js';
 export { MixPlaylist } from './mix-playlist.js';
-export { LiveVideo } from './live-video.js';
+import { LiveVideo } from './live-video.js';
+export { LiveVideo };
 export { Caption, CaptionLanguage } from './caption.js';
 export { Chat } from './chat.js';
 export { VideoCaptions } from './video-captions.js';
@@ -119,7 +120,7 @@ export async function searchYouTube(
 export async function getVideoPlayback(
     videoId: string,
     options?: import('./client.js').ClientOptions
-): Promise<Video> {
+): Promise<Video | LiveVideo> {
     const client = new Client(options);
     return client.getVideo(videoId);
 }

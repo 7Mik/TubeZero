@@ -26,8 +26,6 @@ export class MixPlaylist extends Base {
         this.id = playlist.playlistId || '';
         
         const contents = playlist.contents || [];
-        this.videoCount = contents.length;
-        
         this.videos = [];
         for (const item of contents) {
             const renderer = item.playlistPanelVideoRenderer;
@@ -35,6 +33,7 @@ export class MixPlaylist extends Base {
                 this.videos.push(new VideoCompact(this.client, renderer));
             }
         }
+        this.videoCount = this.videos.length;
 
         return this;
     }

@@ -390,26 +390,26 @@ export class Client {
         return result.items[0] || undefined;
     }
 
-    async getVideo<T extends Video | LiveVideo>(videoId: string): Promise<T> {
+    async getVideo(videoId: string): Promise<Video | LiveVideo> {
         const [playerData, nextData] = await Promise.all([
             this.requestPlayerWithFallback(videoId),
             this.request('next', { videoId })
         ]);
         const merged = { ...playerData, ...nextData };
         if (playerData.playabilityStatus?.liveStreamability) {
-            return new LiveVideo(this, merged) as any;
+            return new LiveVideo(this, merged);
         }
-        return new Video(this, merged) as any;
+        return new Video(this, merged);
     }
 
-    async getPlaylist<T extends Playlist | MixPlaylist>(playlistId: string): Promise<T> {
+    async getPlaylist(playlistId: string): Promise<Playlist | MixPlaylist> {
         if (playlistId.startsWith('RD')) {
             const data = await this.request('next', { playlistId });
-            return new MixPlaylist(this, data) as any;
+            return new MixPlaylist(this, data);
         }
         const browseId = playlistId.startsWith('VL') ? playlistId : `VL${playlistId}`;
         const data = await this.request('browse', { browseId });
-        return new Playlist(this, data) as any;
+        return new Playlist(this, data);
     }
 
     async getChannel(channelId: string): Promise<Channel | undefined> {
@@ -419,7 +419,7 @@ export class Client {
     }
 
     async getVideoTranscript(videoId: string, languageCode?: string): Promise<Caption[] | undefined> {
-        const video = await this.getVideo<Video>(videoId);
+        const video = await this.getVideo(videoId);
         return video.captions?.get(languageCode);
     }
 }

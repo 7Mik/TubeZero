@@ -38,6 +38,8 @@ console.log(playlist.title); // "'Never Gonna Give You Up' Rick Astley Playlist"
 console.log(playlist.videoCount); // 60
 
 // Fetch all videos
-await playlist.videos.next(0);
+while (playlist.videos.hasMore) {
+    await playlist.videos.next();
+}
 console.log(playlist.videos.items.length); // 60
 ```

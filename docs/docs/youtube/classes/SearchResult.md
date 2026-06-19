@@ -23,7 +23,7 @@ The continuation token for fetching the next page of search results.
 Fetches the next batch of search items.
 
 *   **Parameters:**
-    *   `count`: `number` (optional) - Number of items to retrieve. If not supplied, fetches the next single page of results. If set to `0`, loops until no further items are available.
+    *   `count`: `number` (optional) - Number of items to retrieve. If not supplied, fetches the next single page of results. Note: `next(0)` fetches 0 items (returns an empty array). To fetch all items, use a while loop with `next()`.
 *   **Returns:** `Promise<(VideoCompact | PlaylistCompact | ChannelCompact)[]>`
 
 ## Compact Result Item Models

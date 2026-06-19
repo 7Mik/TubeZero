@@ -18,7 +18,10 @@ export class Thumbnails extends Array<Thumbnail> {
     }
 
     public get best(): string | undefined {
-        return this[this.length - 1]?.url;
+        return this.reduce((prev: Thumbnail | undefined, curr: Thumbnail) => {
+            if (!prev) return curr;
+            return (prev.width * prev.height > curr.width * curr.height) ? prev : curr;
+        }, undefined)?.url;
     }
 
     public load(thumbnails: Thumbnail[]): Thumbnails {

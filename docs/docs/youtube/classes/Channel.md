@@ -22,7 +22,7 @@ The channel handle (e.g. `"@RickAstleyYT"`).
 ### `description: string | undefined`
 The channel description text.
 
-### `thumbnails: Thumbnails`
+### `thumbnails?: Thumbnails`
 The channel profile avatar thumbnails. Inherits from `Array<Thumbnail>`.
 
 ### `subscriberCount: string | undefined`

@@ -1,6 +1,9 @@
-if [ "$(uname)" = "Linux" ]; then
+set -e
+
+if [ "$(uname)" = "Linux" ] || [ "$(uname)" = "Darwin" ]; then
   npx lint-staged
-  npm run typecheck
 else
-  echo "Skipping code checks (running on Windows/Non-Linux)"
+  echo "Skipping lint-staged (code review) on Windows"
 fi
+
+npm run typecheck
