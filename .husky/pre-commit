@@ -2,8 +2,7 @@ set -e
 
 if [ "$(uname)" = "Linux" ] || [ "$(uname)" = "Darwin" ]; then
   npx lint-staged
+  npm run typecheck
 else
-  echo "Skipping lint-staged (code review) on Windows"
+  echo "Skipping all code checks on Windows"
 fi
-
-npm run typecheck
